@@ -1,0 +1,7 @@
+openrouter-app/openrouter-app
+
+# Private keys and certificates
+*.pem
+
+# Output of the D5 full-runs smoke test
+openrouter-app/fullruns-transcripts.txt

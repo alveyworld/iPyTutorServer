@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>iPyInterVu</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div id="auth-gate" class="auth-gate hidden" aria-hidden="true">
+    <div class="auth-card">
+      <div id="auth-logging-in" class="auth-logging-in hidden" role="status" aria-live="polite">
+        <h2 id="auth-logging-in-title">Logging you in</h2>
+      </div>
+      <form id="auth-form" class="auth-login-form">
+        <h2>Enter public key</h2>
+        <p class="auth-copy">Paste the public key you received outside this app.</p>
+        <textarea
+          id="public-key-input"
+          rows="8"
+          placeholder="-----BEGIN PUBLIC KEY-----&#10;...&#10;-----END PUBLIC KEY-----"
+        ></textarea>
+        <p id="auth-error" class="auth-error hidden" role="alert"></p>
+        <button type="submit" id="auth-submit-btn">Continue</button>
+      </form>
+    </div>
+  </div>
+
+  <main class="app app-locked">
+    <header class="header">
+      <h1>iPyInterVu</h1>
+    </header>
+
+    <section id="messages" class="messages" aria-live="polite"></section>
+
+    <div class="bottom-panel">
+      <p id="early-coaching-banner" class="early-coaching-banner hidden" role="status" aria-live="polite">
+        Coach mode entered before final assessment results were shown.
+      </p>
+
+      <form id="chat-form" class="composer">
+      <textarea
+        id="prompt"
+        rows="3"
+        placeholder="Tell me your answer."
+        required
+      ></textarea>
+      <div class="composer-actions">
+        <div id="assessment-times" class="assessment-times hidden" aria-live="polite">
+          <span id="assessment-start-time" class="assessment-time"></span>
+          <span id="assessment-end-time" class="assessment-time hidden"></span>
+        </div>
+        <button type="submit" id="send-btn">Send</button>
+      </div>
+    </form>
+    </div>
+  </main>
+
+  <script src="/marked.min.js"></script>
+  <script src="/dompurify.min.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

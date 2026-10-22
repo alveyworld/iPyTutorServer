@@ -1,0 +1,26 @@
+For AssessmentInProgress phase, Conceptual mode, Week 1:
+
+INSTRUCTION FILES SENT:
+- IPyIntervu-entrypoint.md              13,651 bytes
+- IPyIntervu-protocols.md               27,871 bytes ← LARGE
+- IPyIntervu-week-scope.md               3,998 bytes
+- IPyIntervu-modes-shared.md             5,433 bytes
+- IPyIntervu-modes-conceptual.md         7,078 bytes
+- week1_key_concepts.md                ~3,500 bytes (estimated)
+- week1_competency_guide.md              3,672 bytes
+- week1_rubric.md                        3,093 bytes
+────────────────────────────────────────────────
+TOTAL FILES:                           ~68,300 bytes
+
+PLUS:
+- Session state JSON                   ~2,000 bytes
+- System instructions/directives       ~3,000 bytes
+- Conversation history                 ~1,000-5,000 bytes
+
+TOTAL PER REQUEST:               ~74,000-78,000 bytes (~74-78 KB)
+
+LARGEST CULPRITS:
+1. IPyIntervu-protocols.md      27,871 bytes (38% of file size)
+2. IPyIntervu-entrypoint.md     13,651 bytes (19%)
+3. IPyIntervu-modes-conceptual   7,078 bytes (10%)
+4. modes-shared                  5,433 bytes (7%)
