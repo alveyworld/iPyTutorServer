@@ -1,361 +1,179 @@
-# iPyInterVu
+# iPyTutor
 
-iPyInterVu is a Go web server that serves a chat UI and proxies requests to [OpenRouter](https://openrouter.ai/). The OpenRouter API key and auth private key stay on the server; users authenticate with an RSA public key distributed outside the app.
+iPyTutor is a weekly Python tutor that prepares students for **iPyIntervu**, the AI interview that rates them *Not Ready Yet*, *Competent* or *Exceptional* on each week's key concept. It started as a copy of iPyIntervuServer: it keeps that project's login, deployment, week materials and rubrics, and replaces the interviewer with a tutor.
 
-The application code lives in [`openrouter-app/`](openrouter-app/). Deployment scripts are in [`openrouter-app/deploy/`](openrouter-app/deploy/).
+Each week a student can:
 
-## Prerequisites
+- **Learn the concept** through short lessons (📖 *Teach me*, *Next lesson*), with examples set in their own major and a quick check at the end of each.
+- **Practice the interview's three parts** on request, in the interview's own formats:
+  - 💬 **Concept questions**: a real-world situation and a question about how the week's Python works, with an interviewer-style follow-up.
+  - 🧩 **Code problems**: a story problem with *Data available* and *What's wanted*. The student breaks it down, writes and pastes the code, then explains it and how they used AI.
+  - 🐞 **Bug hunts**: a short program with one real bug. The student explains how they'd track it down, then pins down the fix.
+  - Week 1 is decomposition only, like its interview.
+- **Get feedback after every answer**, ending in an **Interview check**: the rating the answer would likely get, and what would raise it. Students can ask for a **hint** (progressively more specific), the worked **solution**, or **another one**, **a harder one**, or **an easier one**.
+- **See how the interview works** (🎯 *Interview guide*): what each part asks and the week's rubric criteria for Competent and Exceptional.
+- **Track progress week to week** (📊 *My progress*): lessons done, the latest rating in each part, and an **interview readiness** estimate that uses the interview's own rule (Not Ready Yet in any part means not ready; Exceptional needs all three parts Exceptional). The sidebar always shows the suggested next step.
 
-- A DigitalOcean account (for the easiest setup path below)
-- A domain name with DNS you can edit (for example `aalang.org`)
+Students can also just ask questions or paste code to have it explained.
 
-For the alternative scripted setup from a fresh server, you also need:
+The application lives in [`openrouter-app/`](openrouter-app/), deployment scripts in [`openrouter-app/deploy/`](openrouter-app/deploy/).
 
-- Ubuntu 24.04 (or similar Linux)
-- Go 1.22+ installed (for building from source)
-- An [OpenRouter API key](https://openrouter.ai/)
-- An RSA keypair for user authentication (Ed25519 / OpenSSH keys are not supported)
+## How students are recognized: study codes
 
-## Secrets and the repository
+There are no accounts. On first visit the tutor asks for the student's major and gives them a **study code** such as `maple-river-4821`. Their progress is saved on the server under that code:
 
-The OpenRouter API key and `.pem` key files are **not stored in this repository**. On a backup-restored Droplet they already live in `/etc/openrouter-app/`. On a fresh server they are created during scripted setup. Do not commit secrets to git.
+- The browser remembers the code, so the student is welcomed back automatically.
+- On another device, they type the code to pick up where they left off.
+- *Not you? Use a different study code* in the sidebar forgets the code in that browser.
 
----
+Codes are random (about 14 million combinations), and the site is still behind the class's login key. A session that enters 5 unknown codes is refused further tries. Progress is study data only: major, lessons done and practice ratings.
 
-## Easiest way: Create a Droplet from a DigitalOcean backup (aalang-Web)
+## How it works
 
-If the existing **aalang-Web** Droplet is already configured for iPyInterVu, the fastest way to get a running server is to create a new Droplet from a DigitalOcean **backup** or **snapshot** of that machine. You skip generating keys, installing secrets, building the app, and configuring HTTPS by hand — all of that is already on the disk image.
+| Piece | Where |
+|---|---|
+| Login (RSA challenge and session token, unchanged from iPyIntervu) | `auth.go`, `session.go`, `context.go`, `keys.go` |
+| Week materials: the interview's key concepts, competency guides and rubrics | `env/IPYIntervu_support_files/`, `env/rubrics/` |
+| Lesson plans, one file per week (`##` heading = lesson, bullets = points to cover) | `env/tutor/weekN_lessons.md` |
+| Bug-hunt guide: suitable bugs per week and what good debugging looks like at each level | `env/tutor/bug_hunting_guide.md` |
+| Loads and parses all of the above | `curriculum.go` |
+| What each week may use, and the check that keeps problems in scope | `week_scope.go`, `week_map.go` |
+| Turn routing: onboarding, commands, lessons, practice stages, hints, solutions | `tutor_handler.go`, `tutor_intents.go`, `tutor_session.go` |
+| Prompts | `tutor_prompts.go` |
+| Practice problems: hidden answer key, scope and format checks, background preparation | `tutor_practice.go` |
+| Progress store (one JSON file per study code) and readiness | `progress_store.go`, `readiness.go` |
+| Server-written messages (welcome, weekly plan, interview guide, progress table) | `tutor_messages.go` |
+| OpenRouter client | `llm.go` |
+| Browser UI | `static/` |
 
-If you cannot use that backup, skip to [initial setup from a cloned repo](#alternative-initial-setup-from-a-cloned-repo) below.
+A few design points:
 
-A backup image includes: secrets in `/etc/openrouter-app/`, the `openrouter-app` systemd service, nginx, Let's Encrypt certificates, and (if present on the source Droplet) a clone of this repository.
+- **Practice problems carry a hidden answer key.** The model writes each problem with a `REFERENCE` section, which the server keeps and the student never sees. Feedback, hints and solutions are judged against it.
+- **Problems are checked before students see them.** A problem that uses something from a later week (the same scope checker the interview uses), or that breaks its format (code in a code problem, a bug hunt without a program), is rewritten once.
+- **Problems are prepared in the background.** Once a student starts working in a week, the tutor drafts one problem of each kind with reasoning turned on, which makes bug hunts more reliable. A problem is usually ready the moment it's asked for, and the next one is prepared as each is used. Opening the page alone costs no model calls.
+- **Ratings are hidden from the reply text.** Feedback ends with a `LEVEL:` line that the server strips and records. A question or a request for help isn't rated and doesn't count as an attempt.
+- **Fixed text comes from the server.** Welcome, weekly plan, interview guide and progress need no model call, so they're instant and always match the saved data. If the model is unreachable, a lesson falls back to its outline.
 
-### 1. Open the backup for aalang-Web
+### Editing the curriculum
 
-In the [DigitalOcean control panel](https://cloud.digitalocean.com/):
+- **Lessons:** edit `env/tutor/weekN_lessons.md`. Keep each lesson to what students have learned by that week; `go test` flags later-week ideas (for example, the word "file" before Week 9).
+- **Rubrics and week materials:** copy updated files from iPyIntervuServer over the ones in `env/`, so the tutor teaches to what the interview grades.
+- **Model:** set `TUTOR_MODEL` (default `deepseek/deepseek-v4-flash-0731`, the interview's model).
 
-1. Go to **Droplets**
-2. Click the existing **aalang-Web** Droplet
-3. Open the **Backups** tab (weekly automatic backups) or **Snapshots** (if you created a manual snapshot)
+Changes to `env/` are built into the binary, so rebuild or redeploy after editing.
 
-**What this does:** Locates the disk image taken from the running iPyInterVu server. Use the most recent backup or snapshot.
+## Running it locally
 
----
-
-### 2. Create a Droplet from the backup image
-
-1. On the backup or snapshot you want, click **More** → **Create Droplet** (or **Restore** / **Create from snapshot**, depending on the UI)
-2. Choose the same **region** as the original Droplet if possible (lowest latency, same VPC if you use one later)
-3. Choose a **size** (same or larger than aalang-Web)
-4. Add your **SSH key**
-5. Set a hostname (for example `aalang-web-2` or keep `aalang-Web` if replacing the old Droplet)
-6. Click **Create Droplet**
-
-**What this does:** Provisions a new Droplet whose disk is a copy of aalang-Web at backup time. The new machine starts with iPyInterVu already installed.
-
----
-
-### 3. Note the new public IP address
-
-When the Droplet finishes creating, copy its **public IPv4 address** from the Droplet page.
-
-**What this does:** The new Droplet almost always gets a different IP than the original. You need this address for DNS.
-
----
-
-### 4. Update DNS for your domain
-
-At your DNS provider, update the **A record** for `aalang.org` (and `www.aalang.org` if used) to point to the **new** Droplet IP.
-
-Wait for DNS to propagate (minutes to hours).
-
-**What this does:** Sends browser traffic for `https://aalang.org/` to the new Droplet instead of the old one.
-
----
-
-### 5. SSH into the new Droplet and verify services
+You need Go 1.22 or later.
 
 ```bash
-ssh manager@<new-droplet-ip>
-
-sudo systemctl status openrouter-app
-sudo systemctl status nginx
-curl http://127.0.0.1:8080/healthz
-curl https://aalang.org/healthz
+FAKE_LLM=1 tools/run-local.sh
 ```
 
-Expected: both health checks return `ok`; `openrouter-app` and `nginx` are **active**.
-
-**What this does:** Confirms the restored image booted correctly and the app and reverse proxy are running.
-
----
-
-### 6. Renew or re-issue TLS if HTTPS fails
-
-If `curl https://aalang.org/healthz` fails with a certificate error after the IP change, renew Let's Encrypt on the new Droplet:
+This uses canned replies from [`tools/fake-openrouter`](tools/fake-openrouter/main.go), so you can click through the whole UI without an API key. To use the real model, set `OPENROUTER_API_KEY` (or put it in `~/.openrouter-env`) and run without `FAKE_LLM`:
 
 ```bash
-sudo certbot renew
-sudo systemctl reload nginx
+tools/run-local.sh
 ```
 
-If renewal fails, re-run certbot for the domain:
+Open http://localhost:8080 and paste the development public key it prints (`~/.ipytutor-dev/auth-public-key.pem`). Local progress is kept in `~/.ipytutor-dev/data`.
+
+Run the tests:
 
 ```bash
-sudo certbot --nginx -d aalang.org
-sudo systemctl reload nginx
+cd openrouter-app && go test ./...
 ```
 
-**What this does:** Refreshes the TLS certificate for the new server. Certificates are stored on disk and are usually restored with the backup; renewal may still be needed after an IP or hostname change.
+They cover the curriculum files (including the scope check on every lesson plan), study codes and the progress store, readiness, command detection and problem parsing. End-to-end tests drive whole student journeys through the HTTP handlers against a fake OpenRouter.
 
----
+## Configuration
 
-### 7. Update application code (optional)
+| Variable | Default | Purpose |
+|---|---|---|
+| `OPENROUTER_API_KEY` | (required) | OpenRouter key |
+| `AUTH_PRIVATE_KEY_FILE` or `AUTH_PRIVATE_KEY` | (required) | RSA private key for login |
+| `TUTOR_DATA_DIR` | `./data` | Where student progress is stored |
+| `TUTOR_MODEL` | `deepseek/deepseek-v4-flash-0731` | OpenRouter model |
+| `PORT`, `LISTEN_ADDR` | `8080`, all interfaces | Listen address (the systemd unit uses `127.0.0.1:8090`) |
+| `OPENROUTER_URL` | OpenRouter's endpoint | Point at a fake for testing |
+| `OPENROUTER_HTTP_REFERER`, `OPENROUTER_APP_TITLE` | none, `iPyTutor` | Attribution headers sent to OpenRouter |
 
-If the repo is cloned on the Droplet and you need changes made after the backup was taken:
+## Deploying
+
+The scripts deploy iPyTutor as its own service, so it can share a server with iPyIntervu without touching it:
+
+| | iPyTutor | iPyIntervu |
+|---|---|---|
+| systemd service | `ipytutor` | `openrouter-app` |
+| Binary | `/usr/local/bin/ipytutor` | `/usr/local/bin/openrouter-app` |
+| Secrets | `/etc/ipytutor/` | `/etc/openrouter-app/` |
+| Port (localhost) | `8090` | `8080` |
+| Student progress | `/var/lib/ipytutor/` | none |
+
+On an Ubuntu 24.04 server with Go installed, with the repository cloned to, for example, `/home/manager/iPyTutorServer`:
 
 ```bash
-cd /home/manager/iPyIntervuServer
-git pull
-
-cd openrouter-app
-./deploy/redeploy.sh
+cd /home/manager/iPyTutorServer/openrouter-app
 ```
 
-**What this does:** Rebuilds and restarts the Go app from the latest code without re-running secrets or HTTPS setup.
-
----
-
-### 8. Retire or destroy the old Droplet (optional)
-
-After DNS points at the new Droplet and `https://aalang.org/` works:
-
-1. Confirm the new server handles traffic for at least a few hours
-2. Power off or destroy the old **aalang-Web** Droplet in DigitalOcean to avoid paying for two servers
-
-**What this does:** Completes migration to the new Droplet. Do not destroy the old Droplet until the new one is verified.
-
----
-
-### 9. Use the application
-
-Open `https://aalang.org/` in a browser.
-
-1. Paste the public key when prompted (first visit only, unless you already have it in browser storage)
-2. Select a model from the dropdown
-3. Send a chat message
-
-**What this does:** Confirms end-to-end access. Users need the public key distributed out-of-band (same key as before if you restored from the same aalang-Web backup).
-
-You do **not** need to run `install-secrets.sh`, `install.sh`, or `setup-https.sh` on a successfully restored Droplet unless something is missing or broken.
-
-**No access to the aalang-Web backup?** Follow the [initial setup instructions](#alternative-initial-setup-from-a-cloned-repo) below instead.
-
----
-
-## Alternative: Initial setup from a cloned repo
-
-Use this path if you **do not have access** to a DigitalOcean backup or snapshot of **aalang-Web**, or if you are starting from a **fresh Ubuntu Droplet** with no prior iPyInterVu configuration.
-
-Assume the repo is cloned to the server, for example:
-
-```text
-/home/manager/iPyIntervuServer/
-```
-
-All commands below use:
+**1. Choose the login key.** To let students use the public key they already have for iPyIntervu, use the same private key. Otherwise, make a new pair and give students `env/ipytutor-pub.pem`:
 
 ```bash
-cd /home/manager/iPyIntervuServer/openrouter-app
+openssl genpkey -algorithm RSA -out env/ipytutor-key.pem -pkeyopt rsa_keygen_bits:2048
+openssl rsa -in env/ipytutor-key.pem -pubout -out env/ipytutor-pub.pem
+chmod 600 env/ipytutor-key.pem
 ```
 
-Adjust the path if your clone lives elsewhere.
-
-### 1. Generate an RSA keypair
-
-Create an RSA private/public keypair on the server (or on a trusted machine, then copy the private key to the server).
-
-```bash
-mkdir -p env
-openssl genpkey -algorithm RSA -out env/ipyintervu-key.pem -pkeyopt rsa_keygen_bits:2048
-openssl rsa -in env/ipyintervu-key.pem -pubout -out env/ipyintervu-pub.pem
-chmod 600 env/ipyintervu-key.pem
-```
-
-**What this does:** Creates the keypair used for challenge–response authentication. The private key stays on the server. The public key (`env/ipyintervu-pub.pem`) is given to users out-of-band; they paste it into the web UI on first visit.
-
----
-
-### 2. Install secrets on the server
+**2. Install secrets.** This prompts for the OpenRouter key and installs the private key. Pass a path to use another key, such as iPyIntervu's `/etc/openrouter-app/auth-private-key.pem`:
 
 ```bash
 sudo ./deploy/install-secrets.sh
 ```
 
-Optional: pass a custom path to the private key PEM:
-
-```bash
-sudo ./deploy/install-secrets.sh /path/to/ipyintervu-key.pem
-```
-
-**What this does:**
-
-- Creates `/etc/openrouter-app/`
-- Creates the `openrouter` system user (if missing)
-- Prompts for your OpenRouter API key and writes `/etc/openrouter-app/env`
-- Copies the private key to `/etc/openrouter-app/auth-private-key.pem`
-- Sets restrictive file permissions (`env` → `600`, private key → `640`)
-
-If secrets already exist, this script does not overwrite them.
-
----
-
-### 3. Build and install the application
+**3. Build, install and start the service:**
 
 ```bash
 sudo ./deploy/install.sh
+curl http://127.0.0.1:8090/healthz
 ```
 
-**What this does:**
-
-- Verifies secrets from step 2 are present
-- Runs `deploy/build.sh` to compile a Linux `amd64` binary
-- Installs the binary to `/usr/local/bin/openrouter-app`
-- Installs the systemd unit (`openrouter-app.service`)
-- Enables and starts the `openrouter-app` service on boot
-- Binds the app to `127.0.0.1:8080` (localhost only)
-
-Verify:
+**4. Enable HTTPS** (needed for the browser's login encryption). Point a domain or subdomain, such as `tutor.aalang.org`, at the server first:
 
 ```bash
-curl http://127.0.0.1:8080/healthz
+sudo ./deploy/setup-https.sh tutor.aalang.org admin@aalang.org
 ```
 
-Expected output: `ok`
-
-At this point the app runs, but it is only reachable locally. Remote browsers need HTTPS for authentication (Web Crypto).
-
----
-
-### 4. Enable HTTPS with nginx and Let's Encrypt
-
-Your domain must already resolve to this server's public IP.
+**Updating** after `git pull`:
 
 ```bash
-sudo ./deploy/setup-https.sh <your-domain> [email]
-```
-
-Example:
-
-```bash
-sudo ./deploy/setup-https.sh aalang.org admin@aalang.org
-```
-
-**What this does:**
-
-- Installs nginx, certbot, and the certbot nginx plugin
-- Configures nginx to reverse-proxy to `127.0.0.1:8080`
-- Obtains a Let's Encrypt TLS certificate for your domain
-- Redirects HTTP to HTTPS
-- Reloads nginx
-
-Verify:
-
-```bash
-curl https://<your-domain>/healthz
-```
-
-Expected output: `ok`
-
----
-
-### 5. Distribute the public key to users
-
-Give users the contents of `env/ipyintervu-pub.pem` outside the web app (email, document, in person, etc.).
-
-**What this does:** Users need the public key to authenticate. On first visit to `https://<your-domain>/`, they paste the key into the prompt. The browser stores it in `localStorage` for later visits.
-
----
-
-### 6. Use the application
-
-Open `https://<your-domain>/` in a browser.
-
-1. Paste the public key when prompted (first visit only)
-2. Select a model from the dropdown
-3. Send a chat message
-
----
-
-## Choosing a setup path
-
-| Approach | Use when |
-|----------|----------|
-| **Backup / snapshot** (easiest; listed first above) | You have access to a backup or snapshot of the configured aalang-Web Droplet |
-| **Initial setup from cloned repo** (alternative above) | You do not have access to that backup, or you are on a fresh Ubuntu Droplet |
-
----
-
-## Updating the application
-
-After code changes or `git pull`, rebuild and restart without repeating the full install:
-
-```bash
-cd /home/manager/iPyIntervuServer/openrouter-app
 ./deploy/redeploy.sh
 ```
 
-**What this does:**
+**Staging:** `./deploy/staging.sh` runs the current source on `127.0.0.1:8091`, with its own progress directory, next to production.
 
-- Runs `deploy/build.sh`
-- Replaces `/usr/local/bin/openrouter-app` with the new binary
-- Restarts the `openrouter-app` systemd service
+**Rotating the login key:** `sudo ./deploy/cycle_keys.sh` (try `--dry-run` first). Student progress is kept, because it's stored under study codes, not the login key.
 
-nginx and secrets are not changed.
+### Back up student progress
 
----
+All progress is in `/var/lib/ipytutor/`, one small JSON file per student. Include it in the server's backups (DigitalOcean droplet backups cover it). Progress is stored on the server's own disk, so run a single server; several servers behind a load balancer would each see different progress.
 
-## Deploy scripts reference
+### Deploy scripts
 
 | Script | When to run | Requires root |
-|--------|-------------|---------------|
-| `deploy/build.sh` | Compile Linux binary only | No |
-| `deploy/install-secrets.sh` | First-time secret setup (scripted path only) | Yes |
-| `deploy/install.sh` | First-time app + systemd install (scripted path only) | Yes |
-| `deploy/setup-https.sh` | First-time HTTPS setup (scripted path only) | Yes |
-| `deploy/redeploy.sh` | Code updates after install | Partial (`sudo` for install/restart) |
-| `deploy/fix-nginx-proxy.sh` | Fix nginx proxying to wrong backend port | Yes |
-
----
+|---|---|---|
+| `deploy/build.sh` | Compile the Linux binary only | No |
+| `deploy/install-secrets.sh` | First-time secret setup | Yes |
+| `deploy/install.sh` | First-time app and systemd install | Yes |
+| `deploy/setup-https.sh` | First-time nginx and HTTPS setup | Yes |
+| `deploy/redeploy.sh` | Code or content updates | Partly (`sudo` to install and restart) |
+| `deploy/staging.sh` | Try changes next to production | Partly |
+| `deploy/cycle_keys.sh` | Rotate the login keypair | Yes |
+| `deploy/startup.sh`, `deploy/shutdown.sh` | Start or stop nginx | Yes |
 
 ## Troubleshooting
 
-**`curl http://127.0.0.1:8080/healthz` fails**
-
-- Check the service: `sudo systemctl status openrouter-app`
-- On a fresh server, ensure scripted setup steps 2 and 3 completed
-- On a restored Droplet, try `sudo systemctl restart openrouter-app`
-
-**Browser shows "Connection is not private"**
-
-- Use `https://<your-domain>/` (not `http://` or a bare IP)
-- Avoid `www.` unless the certificate includes that name
-- Try a private browser window to clear cached TLS state
-
-**Authentication fails in the browser**
-
-- HTTPS is required for remote users
-- Confirm the public key matches the server's private key
-- Use `https://<your-domain>/`, not `http://<public-ip>/`
-
-**`502 Bad Gateway` from nginx**
-
-- The Go app must be running on `127.0.0.1:8080`
-- Run `sudo ./deploy/fix-nginx-proxy.sh <your-domain>` if an old nginx config proxies to the wrong port
-
----
-
-## Further reading
-
-- [`design.md`](design.md) — full architecture and phased deployment plan
-- [`digitalocean-openrouter-go-proposal.md`](digitalocean-openrouter-go-proposal.md) — original deployment proposal
+- **`curl http://127.0.0.1:8090/healthz` fails:** check `sudo systemctl status ipytutor` and `sudo journalctl -u ipytutor -n 50`.
+- **The tutor replies "couldn't reach the tutor model":** check the OpenRouter key in `/etc/ipytutor/env` and the `[tutor] llm` log lines for the error.
+- **Authentication fails in the browser:** use `https://`, and make sure the public key students paste matches the private key in `/etc/ipytutor/`.
+- **`502 Bad Gateway` from nginx:** the app must be running on `127.0.0.1:8090`.
+- **A student lost their study code:** each file in `/var/lib/ipytutor/` is named after a code and records the student's major, so you can help them find theirs.

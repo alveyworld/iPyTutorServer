@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -93,20 +92,5 @@ func TestTurnStoreFailedPartialResume(t *testing.T) {
 	follower := store.acquire(sessionID, turnID)
 	if follower.role != turnRoleFollower {
 		t.Fatalf("follower role = %v, want follower", follower.role)
-	}
-}
-
-func TestReplaceAssistantContent(t *testing.T) {
-	raw := []byte(`{"choices":[{"message":{"content":"before"}}]}`)
-	updated, err := replaceAssistantContent(raw, "after")
-	if err != nil {
-		t.Fatalf("replaceAssistantContent: %v", err)
-	}
-	var completion openRouterCompletion
-	if err := json.Unmarshal(updated, &completion); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if completion.Choices[0].Message.Content != "after" {
-		t.Fatalf("content = %q, want after", completion.Choices[0].Message.Content)
 	}
 }

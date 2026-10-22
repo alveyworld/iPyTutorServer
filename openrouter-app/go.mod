@@ -1,3 +1,3 @@
-module openrouter-app
+module ipytutor
 
 go 1.22

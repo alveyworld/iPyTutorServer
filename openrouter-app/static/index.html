@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>iPyInterVu</title>
+  <title>iPyTutor</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -14,7 +14,7 @@
       </div>
       <form id="auth-form" class="auth-login-form">
         <h2>Enter public key</h2>
-        <p class="auth-copy">Paste the public key you received outside this app.</p>
+        <p class="auth-copy">Paste the public key you received from your instructor.</p>
         <textarea
           id="public-key-input"
           rows="8"
@@ -26,35 +26,76 @@
     </div>
   </div>
 
-  <main class="app app-locked">
-    <header class="header">
-      <h1>iPyInterVu</h1>
-    </header>
-
-    <section id="messages" class="messages" aria-live="polite"></section>
-
-    <div class="bottom-panel">
-      <p id="early-coaching-banner" class="early-coaching-banner hidden" role="status" aria-live="polite">
-        Coach mode entered before final assessment results were shown.
-      </p>
-
-      <form id="chat-form" class="composer">
-      <textarea
-        id="prompt"
-        rows="3"
-        placeholder="Tell me your answer."
-        required
-      ></textarea>
-      <div class="composer-actions">
-        <div id="assessment-times" class="assessment-times hidden" aria-live="polite">
-          <span id="assessment-start-time" class="assessment-time"></span>
-          <span id="assessment-end-time" class="assessment-time hidden"></span>
+  <div id="app" class="layout app-locked">
+    <aside id="sidebar" class="sidebar" aria-label="Your progress">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">🐍</span>
+        <div>
+          <h1>iPyTutor</h1>
+          <p class="tagline">Weekly Python practice for your iPyIntervu interview</p>
         </div>
-        <button type="submit" id="send-btn">Send</button>
       </div>
-    </form>
-    </div>
-  </main>
+
+      <section id="intro-card" class="card">
+        <p>Tell the tutor your major to get a <strong>study code</strong>, then pick the week you're studying.</p>
+        <p class="muted">Your progress is saved under your study code, so you can come back every week, on any device.</p>
+      </section>
+
+      <section id="profile-card" class="card hidden">
+        <div class="card-label">Study code</div>
+        <div class="study-code-row">
+          <code id="study-code"></code>
+          <button type="button" id="copy-code" class="ghost small">Copy</button>
+        </div>
+        <p id="major-line" class="muted small"></p>
+        <button type="button" id="switch-student" class="link small">Not you? Use a different study code</button>
+      </section>
+
+      <section id="week-card" class="card hidden">
+        <label class="card-label" for="week-select">Studying</label>
+        <select id="week-select"></select>
+
+        <div class="meter">
+          <div class="meter-row"><span>📖 Lessons</span><span id="lessons-count"></span></div>
+          <div class="bar" aria-hidden="true"><div id="lessons-bar" class="bar-fill"></div></div>
+        </div>
+
+        <div class="card-label">Interview parts</div>
+        <ul id="parts" class="parts"></ul>
+
+        <div class="readiness-row">
+          <span class="card-label">Readiness</span>
+          <span id="readiness" class="badge"></span>
+        </div>
+        <p id="next-step" class="next-step"></p>
+      </section>
+    </aside>
+
+    <main class="chat">
+      <header class="chat-header">
+        <span class="mobile-brand"><span aria-hidden="true">🐍</span> iPyTutor</span>
+        <button type="button" id="toggle-sidebar" class="ghost small" aria-controls="sidebar" aria-expanded="false">Progress</button>
+      </header>
+
+      <section id="messages" class="messages" aria-live="polite"></section>
+
+      <div class="bottom-panel">
+        <div id="actions" class="actions" role="toolbar" aria-label="Quick actions"></div>
+        <form id="chat-form" class="composer">
+          <textarea
+            id="prompt"
+            rows="3"
+            placeholder="Ask a question or type your answer…"
+            required
+          ></textarea>
+          <div class="composer-actions">
+            <span class="composer-hint">Ctrl+Enter to send</span>
+            <button type="submit" id="send-btn">Send</button>
+          </div>
+        </form>
+      </div>
+    </main>
+  </div>
 
   <script src="/marked.min.js"></script>
   <script src="/dompurify.min.js"></script>

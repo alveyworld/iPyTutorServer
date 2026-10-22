@@ -1,24 +1,23 @@
 #!/usr/bin/env bash
 # Run a staging copy of the app from the current source tree, next to production.
 #
-#   ./deploy/staging.sh          build, install, and start staging on 127.0.0.1:8081
+#   ./deploy/staging.sh          build, install, and start staging on 127.0.0.1:8091
 #   ./deploy/staging.sh stop     stop staging
 #   ./deploy/staging.sh logs     show recent staging logs
 #
-# Staging uses the production secrets (/etc/openrouter-app/env) and runs as the
-# openrouter user, but listens only on localhost. Reach it by running this on your
-# own computer (not the server), then open http://localhost:8081 there:
-#   ssh -N -L 8081:127.0.0.1:8081 manager@aalang.org
+# Staging uses the production secrets (/etc/ipytutor/env) and runs as the ipytutor
+# user, but listens only on localhost and keeps its own student progress in
+# /var/lib/ipytutor-staging. Reach it by running this on your own computer (not the
+# server), then open http://localhost:8091 there:
+#   ssh -N -L 8091:127.0.0.1:8091 manager@aalang.org
 # Set STAGING_SSH_HOST to change the host shown in the printed instructions.
-# Staging runs the D5 engine by default; IPY_ENGINE=old ./deploy/staging.sh runs the original one.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-UNIT="openrouter-staging"
-BIN="/usr/local/bin/openrouter-app-staging"
-PORT="${STAGING_PORT:-8081}"
+UNIT="ipytutor-staging"
+BIN="/usr/local/bin/ipytutor-staging"
+PORT="${STAGING_PORT:-8091}"
 SSH_HOST="${STAGING_SSH_HOST:-aalang.org}"
-ENGINE="${IPY_ENGINE:-d5}"
 
 case "${1:-start}" in
   stop)
@@ -43,22 +42,22 @@ BUILD_OUT="$(mktemp)"
 trap 'rm -f "$BUILD_OUT"' EXIT
 
 echo "Branch: $(git rev-parse --abbrev-ref HEAD) ($(git rev-parse --short HEAD)$(git diff --quiet || echo ' + uncommitted changes'))"
-echo "Engine: $ENGINE"
 go test ./...
 ./deploy/build.sh "$BUILD_OUT"
 
 sudo systemctl stop "$UNIT" 2>/dev/null || true
 sudo systemctl reset-failed "$UNIT" 2>/dev/null || true
 sudo install -m 755 "$BUILD_OUT" "$BIN"
-sudo systemd-run --unit="$UNIT" --uid=openrouter --gid=openrouter \
-  -p EnvironmentFile=/etc/openrouter-app/env \
-  -E AUTH_PRIVATE_KEY_FILE=/etc/openrouter-app/auth-private-key.pem \
-  -E LISTEN_ADDR=127.0.0.1 -E PORT="$PORT" -E IPY_ENGINE="$ENGINE" \
+sudo systemd-run --unit="$UNIT" --uid=ipytutor --gid=ipytutor \
+  -p EnvironmentFile=/etc/ipytutor/env -p StateDirectory=ipytutor-staging \
+  -E AUTH_PRIVATE_KEY_FILE=/etc/ipytutor/auth-private-key.pem \
+  -E TUTOR_DATA_DIR=/var/lib/ipytutor-staging \
+  -E LISTEN_ADDR=127.0.0.1 -E PORT="$PORT" \
   "$BIN"
 
 for _ in 1 2 3 4 5 6 7 8 9 10; do
   if curl -fs "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1; then
-    echo "Staging is up on 127.0.0.1:$PORT with engine $ENGINE (production on 8080 is untouched)."
+    echo "Staging is up on 127.0.0.1:$PORT (production on 8090 is untouched)."
     echo
     echo "To use it, run this in a terminal on your own computer (not this server)"
     echo "and leave it open; it prints nothing while the tunnel is up:"

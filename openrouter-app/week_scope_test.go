@@ -28,51 +28,6 @@ func TestAllowedWeekNumbersForWeek7(t *testing.T) {
 	}
 }
 
-func TestAssessmentWeekScopeSnapshot(t *testing.T) {
-	scope := assessmentWeekScopeSnapshot(7)
-	if scope == nil {
-		t.Fatal("expected non-nil scope")
-	}
-	if scope["primaryWeekNumber"] != 7 {
-		t.Fatalf("primaryWeekNumber = %v", scope["primaryWeekNumber"])
-	}
-}
-
-// Replays a reported Week 2 follow-up that required conditionals and loops.
-func TestWeek2ReplyNeedingConditionalsAndLoopsIsOutOfScope(t *testing.T) {
-	state := &AgentSessionState{
-		ConversationPhase:            phaseAssessmentInProgress,
-		ActiveMode:                   modeConceptual,
-		CurrentWeekNumber:            2,
-		SelectedKeyConcept:           "Week 2 - Variables & Expressions",
-		ConceptualAssessmentPhase:    assessmentPhaseInProgress,
-		ModeOpeningServed:            true,
-		ModeUserAnsweredSinceOpening: true,
-		ModeInterviewStep:            interviewStepInterviewing,
-		LastUserMessageRaw:           "The process would be to multiply price * quantity and add that to a running total variable.",
-	}
-	assistant := "That’s a clear separation of the problem into input, process, and output. Keeping a running total as a variable is a solid approach.\n\n" +
-		"Now, suppose the order has multiple line items, and after the loop finishes, you also need the total to reflect only the items with a positive quantity. How would you guard against including a line where quantity is zero or negative—without using an if statement?\n\n" +
-		"```_ipyintervu\n{\"conceptualAssessmentPhase\": \"in_progress\"}\n```"
-
-	v := detectAssessmentViolations(state, assistant)
-	if !slices.Equal(v.OutOfScope, []string{"if statements and conditionals (week 5)", "loops (week 6)"}) {
-		t.Fatalf("OutOfScope = %q", v.OutOfScope)
-	}
-	followUp := postProcessAssistantTurn(state, assistant, false, nil)
-	if followUp.Kind != "corrective_retry" {
-		t.Fatalf("expected corrective_retry, got %+v", followUp)
-	}
-	for _, want := range []string{"loops (week 6)", "week 2: variables", "not even to tell the student not to use it", "do NOT re-present the opening scenario"} {
-		if !strings.Contains(followUp.Handoff, want) {
-			t.Errorf("handoff missing %q: %q", want, followUp.Handoff)
-		}
-	}
-	if strings.Contains(followUp.Handoff, "week 3:") {
-		t.Errorf("handoff should list only weeks 1-2 as learned: %q", followUp.Handoff)
-	}
-}
-
 func TestOutOfScopeConcepts(t *testing.T) {
 	cases := []struct {
 		week int
@@ -98,33 +53,6 @@ func TestOutOfScopeConcepts(t *testing.T) {
 	}
 }
 
-func TestSystemPromptStatesWeekScopeEachTurn(t *testing.T) {
-	state := &AgentSessionState{
-		ConversationPhase:  phaseAssessmentInProgress,
-		ActiveMode:         modeConceptual,
-		CurrentWeekNumber:  2,
-		SelectedKeyConcept: "Week 2 - Variables & Expressions",
-	}
-	prompt, _, _, err := buildSystemPrompt(state)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{"WEEK SCOPE: the student chose Week 2 - Variables & Expressions", "week 2: variables", "if statements and conditionals, loops", "This scope is internal: you are job interviewers at the company, not instructors"} {
-		if !strings.Contains(prompt, want) {
-			t.Errorf("prompt missing %q", want)
-		}
-	}
-	if strings.Contains(prompt, "week 3: input()") {
-		t.Error("week 2 prompt should not list week 3 as learned")
-	}
-
-	state.CurrentWeekNumber, state.SelectedKeyConcept = 9, "Week 9 - Lists and Files"
-	prompt, _, _, _ = buildSystemPrompt(state)
-	if !strings.Contains(prompt, "Do not use or mention dictionaries") {
-		t.Error("week 9 should still forbid dictionaries")
-	}
-}
-
 func TestUserEntryWordingIsWeek3(t *testing.T) {
 	task := "We’re writing a small program for our warehouse team: it calculates the total cost of an order. The user will enter a quantity and a price per item, and the program should compute and print the total."
 	if got := outOfScopeConcepts(2, task); !slices.Equal(got, []string{"input() and type casting (week 3)"}) {
@@ -143,17 +71,19 @@ func TestUserEntryWordingIsWeek3(t *testing.T) {
 	}
 }
 
-// The model grades against the rubric and the week's support files, so one that expects a
-// later-week concept makes it design out-of-scope tasks and reject in-scope answers (week 2
-// expected input(); weeks 5 and 6 graded loops and while menus).
+// The tutor teaches from the rubric, the week's support files and its own lesson plan, so
+// one that expects a later-week concept makes it teach, and set problems on, things the
+// student hasn't learned (the interview once expected input() in week 2, and graded loops
+// and while menus in weeks 5 and 6).
 func TestWeekFilesExpectOnlyWeeksSoFar(t *testing.T) {
 	for week := 1; week <= lastSyllabusWeek; week++ {
 		for _, path := range []string{
 			fmt.Sprintf("env/rubrics/week%d_rubric.md", week),
 			fmt.Sprintf("env/IPYIntervu_support_files/week%d_key_concepts.md", week),
 			fmt.Sprintf("env/IPYIntervu_support_files/week%d_competency_guide.md", week),
+			fmt.Sprintf("env/tutor/week%d_lessons.md", week),
 		} {
-			data, err := instructionFS.ReadFile(path)
+			data, err := contentFS.ReadFile(path)
 			if err != nil {
 				t.Fatal(err)
 			}

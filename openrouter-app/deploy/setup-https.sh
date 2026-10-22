@@ -8,7 +8,7 @@ fi
 
 if [[ $# -lt 1 ]]; then
   echo "Usage: sudo $0 <domain> [email]" >&2
-  echo "Example: sudo $0 aalang.org admin@aalang.org" >&2
+  echo "Example: sudo $0 tutor.aalang.org admin@aalang.org" >&2
   echo "The domain must already point at this server's public IP." >&2
   exit 1
 fi
@@ -21,15 +21,16 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y nginx certbot python3-certbot-nginx
 
-if ! curl -sf http://127.0.0.1:8080/healthz >/dev/null; then
-  echo "Go app is not responding on 127.0.0.1:8080." >&2
+if ! curl -sf http://127.0.0.1:8090/healthz >/dev/null; then
+  echo "iPyTutor is not responding on 127.0.0.1:8090." >&2
   echo "Run first: sudo $SCRIPT_DIR/install.sh" >&2
   exit 1
 fi
 
 sed "s/DOMAIN_PLACEHOLDER/${DOMAIN}/g" "$SCRIPT_DIR/nginx.conf.template" \
-  > /etc/nginx/sites-available/ipyintervu
-ln -sf /etc/nginx/sites-available/ipyintervu /etc/nginx/sites-enabled/ipyintervu
+  > /etc/nginx/sites-available/ipytutor
+ln -sf /etc/nginx/sites-available/ipytutor /etc/nginx/sites-enabled/ipytutor
+# Leave other sites (such as iPyIntervu's) alone; only drop nginx's placeholder.
 rm -f /etc/nginx/sites-enabled/default
 
 nginx -t

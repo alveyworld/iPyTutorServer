@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	sessionCookieName  = "ipyintervu_session"
+	sessionCookieName  = "ipytutor_session"
 	sessionTokenHeader = "X-Session-Token"
 )
 

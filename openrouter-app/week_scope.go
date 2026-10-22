@@ -101,18 +101,6 @@ func forbiddenConceptsFromLaterWeeks(currentWeek int) []string {
 	return forbidden
 }
 
-func assessmentWeekScopeSnapshot(currentWeek int) map[string]any {
-	if currentWeek < 1 {
-		return nil
-	}
-	return map[string]any{
-		"allowedWeekNumbers":              allowedWeekNumbers(currentWeek),
-		"primaryWeekNumber":               currentWeek,
-		"forbiddenConceptsFromLaterWeeks": forbiddenConceptsFromLaterWeeks(currentWeek),
-		"scopeRule":                       "All conceptual questions, code tasks, bug snippets, and follow-ups must use only concepts from allowedWeekNumbers (weeks 1 through primaryWeekNumber). Never require, assume, prompt for, or even mention forbiddenConceptsFromLaterWeeks — not even to say the student should not use them (no 'without using an if statement'). Prior-week concepts may appear as supporting ingredients; later-week concepts must not appear even as optional extras. Revise any draft that violates this before presenting it.",
-	}
-}
-
 // neverInScopeWeek marks concepts that are out of scope for every week (dictionaries).
 const neverInScopeWeek = lastSyllabusWeek + 1
 
@@ -161,6 +149,7 @@ var scopeDetectors = []scopeDetector{
 }
 
 var (
+	codeFencePattern         = regexp.MustCompile("(?s)```.*?```")
 	inlineCodePattern        = regexp.MustCompile("`[^`\n]+`")
 	codeCommentPattern       = regexp.MustCompile(`#[^\n]*`)
 	codeStringLiteralPattern = regexp.MustCompile(`"[^"\n]*"|'[^'\n]*'`)
@@ -184,12 +173,11 @@ func replyCodeSegments(visible string) string {
 }
 
 // outOfScopeConcepts lists concepts in a reply that are first taught after currentWeek
-// (or never), as "name (week N)". The student's own words are not checked.
+// (or never), as "name (week N)". The tutor checks the practice problems it writes with it.
 func outOfScopeConcepts(currentWeek int, visible string) []string {
 	if currentWeek < 1 {
 		return nil
 	}
-	visible = stripIPyIntervuTail(visible)
 	code := replyCodeSegments(visible)
 	var found []string
 	for _, d := range scopeDetectors {
@@ -222,25 +210,4 @@ func learnedConceptsSummary(currentWeek int) string {
 		parts = append(parts, fmt.Sprintf("week %d: %s", week, strings.Join(conceptsIntroducedByWeek[week], ", ")))
 	}
 	return strings.Join(parts, "; ")
-}
-
-// weekScopeTurnDirective restates the selected week's scope as one plain line on every
-// assessment turn. The same facts sit in assessmentWeekScope inside the state JSON, where
-// the model overlooked them.
-func weekScopeTurnDirective(state *AgentSessionState) string {
-	if state.ConversationPhase != phaseAssessmentInProgress || state.CurrentWeekNumber < 1 {
-		return ""
-	}
-	var later []string
-	for _, d := range scopeDetectors {
-		if d.week > state.CurrentWeekNumber {
-			later = append(later, d.name)
-		}
-	}
-	line := fmt.Sprintf("WEEK SCOPE: the student chose %s and has learned only %s. Every scenario, question, task, and code snippet must be answerable with only those.",
-		state.SelectedKeyConcept, learnedConceptsSummary(state.CurrentWeekNumber))
-	if len(later) > 0 {
-		line += " Do not use or mention " + strings.Join(later, ", ") + " — not even to say the student should not use them."
-	}
-	return line + " This scope is internal: you are job interviewers at the company, not instructors, so never mention weeks, the course, class, homework, or what the student has learned — frame every question around the work at the company.\n"
 }

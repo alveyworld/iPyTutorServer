@@ -126,13 +126,13 @@ type chatTurnRecord struct {
 }
 
 type turnStore struct {
-	mu              sync.Mutex
-	sessions        map[string]map[string]*chatTurnRecord
+	mu       sync.Mutex
+	sessions map[string]map[string]*chatTurnRecord
 }
 
 func newTurnStore() *turnStore {
 	store := &turnStore{
-		sessions:        make(map[string]map[string]*chatTurnRecord),
+		sessions: make(map[string]map[string]*chatTurnRecord),
 	}
 	go store.cleanupLoop()
 	return store

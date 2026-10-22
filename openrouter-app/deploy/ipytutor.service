@@ -1,0 +1,21 @@
+[Unit]
+Description=iPyTutor, the weekly Python tutor for iPyIntervu
+After=network.target
+
+[Service]
+User=ipytutor
+Group=ipytutor
+EnvironmentFile=/etc/ipytutor/env
+Environment=AUTH_PRIVATE_KEY_FILE=/etc/ipytutor/auth-private-key.pem
+Environment=LISTEN_ADDR=127.0.0.1
+Environment=PORT=8090
+# Student progress: one JSON file per study code. Back this directory up.
+Environment=TUTOR_DATA_DIR=/var/lib/ipytutor
+StateDirectory=ipytutor
+StateDirectoryMode=0750
+ExecStart=/usr/local/bin/ipytutor
+Restart=on-failure
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

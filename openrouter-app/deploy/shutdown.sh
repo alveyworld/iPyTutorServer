@@ -4,8 +4,8 @@
 # Usage: sudo ./shutdown.sh [port]
 #   port  defaults to 80
 #
-# The openrouter-app service (localhost:8080) is left running; only nginx,
-# which fronts it on ports 80/443, is stopped.
+# The ipytutor service (localhost:8090) is left running; only nginx, which
+# fronts it on ports 80/443, is stopped.
 set -euo pipefail
 
 if [[ "${EUID}" -ne 0 ]]; then

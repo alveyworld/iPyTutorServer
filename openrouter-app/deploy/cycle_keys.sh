@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# cycle_keys.sh — rotate the iPyInterVu login keypair.
+# cycle_keys.sh — rotate the iPyTutor login keypair.
 #
 # Generates a fresh RSA pair, proves it works end to end against the running
 # service, installs it under the SAME filenames the app already expects (no code
@@ -12,9 +12,12 @@
 # service is put back the way it was.
 #
 # Files touched (names are fixed, do not rename):
-#   <repo>/env/ipyintervu-key.pem          private key, working copy
-#   <repo>/env/ipyintervu-pub.pem          public key, hand this to students
-#   /etc/openrouter-app/auth-private-key.pem   what systemd actually reads
+#   <repo>/env/ipytutor-key.pem          private key, working copy
+#   <repo>/env/ipytutor-pub.pem          public key, hand this to students
+#   /etc/ipytutor/auth-private-key.pem   what systemd actually reads
+#
+# If iPyTutor shares its key with iPyIntervu, rotate both together, or students will
+# need two different keys.
 #
 # NOTE ON SHRED: shred(1) overwrites in place. On a journalling filesystem
 # (ext4), on copy-on-write filesystems (btrfs/zfs), and on SSDs with wear
@@ -26,12 +29,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-PRIV_REPO="$ROOT_DIR/env/ipyintervu-key.pem"
-PUB_REPO="$ROOT_DIR/env/ipyintervu-pub.pem"
-PRIV_DEPLOYED="${PRIV_DEPLOYED:-/etc/openrouter-app/auth-private-key.pem}"
-SERVICE="${SERVICE:-openrouter-app}"
-BASE_URL="${BASE_URL:-http://127.0.0.1:8080}"
-SERVICE_GROUP="${SERVICE_GROUP:-openrouter}"
+PRIV_REPO="$ROOT_DIR/env/ipytutor-key.pem"
+PUB_REPO="$ROOT_DIR/env/ipytutor-pub.pem"
+PRIV_DEPLOYED="${PRIV_DEPLOYED:-/etc/ipytutor/auth-private-key.pem}"
+SERVICE="${SERVICE:-ipytutor}"
+BASE_URL="${BASE_URL:-http://127.0.0.1:8090}"
+SERVICE_GROUP="${SERVICE_GROUP:-ipytutor}"
 
 KEY_BITS=2048
 DRY_RUN=0
@@ -54,7 +57,8 @@ Usage: sudo ./deploy/cycle_keys.sh [options]
   -h, --help       This text.
 
 Rotating logs every student out; they must paste the new public key
-(env/ipyintervu-pub.pem) to sign back in. Interviews in progress are lost.
+(env/ipytutor-pub.pem) to sign back in. Student progress is kept: it is stored
+under each student's study code, not the login key.
 USAGE
 }
 
@@ -352,11 +356,11 @@ code="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/auth/verif
   -H 'Content-Type: application/json' \
   -d "{\"challenge_id\":\"$cid\",\"ciphertext\":\"$ct_b64\"}" 2>/dev/null)"
 
-if [[ "$code" != "204" ]]; then
-  warn "/api/auth/verify returned $code, expected 204"
+if [[ "$code" != "200" ]]; then
+  warn "/api/auth/verify returned $code, expected 200"
   rollback
 fi
-say "  new key authenticated (HTTP 204)"
+say "  new key authenticated (HTTP 200)"
 
 # ------------------------------------------------------------------- shred
 step "Shredding retired key material"

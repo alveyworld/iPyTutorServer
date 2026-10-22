@@ -1,10 +1,12 @@
-const STORAGE_KEY = "ipyintervu_public_key";
+const STORAGE_KEY = "ipytutor_public_key";
+const STUDY_CODE_KEY = "ipytutor_study_code";
 
+const appEl = document.getElementById("app");
 const messagesEl = document.getElementById("messages");
 const chatForm = document.getElementById("chat-form");
 const promptEl = document.getElementById("prompt");
 const sendBtn = document.getElementById("send-btn");
-const appEl = document.querySelector(".app");
+const actionsEl = document.getElementById("actions");
 const authGateEl = document.getElementById("auth-gate");
 const authFormEl = document.getElementById("auth-form");
 const authLoggingInEl = document.getElementById("auth-logging-in");
@@ -12,45 +14,74 @@ const authLoggingInTitleEl = document.getElementById("auth-logging-in-title");
 const publicKeyInputEl = document.getElementById("public-key-input");
 const authErrorEl = document.getElementById("auth-error");
 const authSubmitBtn = document.getElementById("auth-submit-btn");
-const assessmentTimesEl = document.getElementById("assessment-times");
-const assessmentStartEl = document.getElementById("assessment-start-time");
-const assessmentEndEl = document.getElementById("assessment-end-time");
-const earlyCoachingBannerEl = document.getElementById("early-coaching-banner");
+const sidebarEl = document.getElementById("sidebar");
+const toggleSidebarBtn = document.getElementById("toggle-sidebar");
+const introCardEl = document.getElementById("intro-card");
+const profileCardEl = document.getElementById("profile-card");
+const studyCodeEl = document.getElementById("study-code");
+const copyCodeBtn = document.getElementById("copy-code");
+const majorLineEl = document.getElementById("major-line");
+const switchStudentBtn = document.getElementById("switch-student");
+const weekCardEl = document.getElementById("week-card");
+const weekSelectEl = document.getElementById("week-select");
+const lessonsCountEl = document.getElementById("lessons-count");
+const lessonsBarEl = document.getElementById("lessons-bar");
+const partsEl = document.getElementById("parts");
+const readinessEl = document.getElementById("readiness");
+const nextStepEl = document.getElementById("next-step");
+
+const MAX_USER_MESSAGE_CHARS = 5000;
+const MAX_CHAT_ATTEMPTS = 6;
+const CHAT_RETRY_DELAY_MS = 1500;
+const CHAT_READ_TIMEOUT_MS = 180_000;
+const TURN_ID_HEADER = "X-Turn-Id";
+const SESSION_TOKEN_HEADER = "X-Session-Token";
+const PROMPT_PLACEHOLDER_IDLE = "Ask a question or type your answer…";
+const PROMPT_PLACEHOLDER_WORKING_BASE = "The tutor is thinking";
+const AUTH_LOGGING_IN_BASE = "Logging you in";
+const DOT_ANIMATION_INTERVAL_MS = 600;
+
+const INSECURE_CONTEXT_MESSAGE =
+  "Authentication requires HTTPS or localhost. Browsers block encryption on plain HTTP to remote hosts. Use https://, open http://127.0.0.1/ on the server, or use an SSH tunnel.";
 
 const conversation = [];
+let tutorState = null;
 let isAuthenticated = false;
+let chatInFlight = false;
 // Session token for this page only. The session cookie is shared by every tab,
 // so another tab logging in would otherwise switch this page to its session.
 let sessionToken = "";
 
-function sessionHeaders(extra = {}) {
-  return sessionToken ? { ...extra, [SESSION_TOKEN_HEADER]: sessionToken } : extra;
-}
-let activeChatAbort = null;
-let chatInFlight = false;
-
-const MAX_USER_MESSAGE_CHARS = 5000;
-const MAX_CHAT_RETRIES = 5;
-const CHAT_RETRY_DELAY_MS = 1500;
-const MAX_CHAT_RECOVERY_ATTEMPTS = 4;
-const CHAT_READ_TIMEOUT_MS = 120_000;
-const BOOTSTRAP_TURN_ID = "ipyintervu-bootstrap";
-const CHAT_MODEL = "deepseek/deepseek-v4-flash";
-const TURN_ID_HEADER = "X-Turn-Id";
-const SESSION_TOKEN_HEADER = "X-Session-Token";
-const PROMPT_PLACEHOLDER_IDLE = "Tell me your answer.";
-const PROMPT_PLACEHOLDER_WORKING_BASE = "considering your response";
-const AUTH_LOGGING_IN_BASE = "Logging you in";
-const DOT_ANIMATION_INTERVAL_MS = 600;
-
 const workingPlaceholderAnimation = { timer: null, phase: 0 };
 const loggingInAnimation = { timer: null, phase: 0 };
 
-/** Once coaching is entered before results, keep the banner until page reload. */
-let earlyCoachingBannerLatched = false;
+function sessionHeaders(extra = {}) {
+  return sessionToken ? { ...extra, [SESSION_TOKEN_HEADER]: sessionToken } : extra;
+}
 
-const INSECURE_CONTEXT_MESSAGE =
-  "Authentication requires HTTPS or localhost. Browsers block encryption on plain HTTP to remote hosts. Use https://, open http://127.0.0.1/ on the server, or use an SSH tunnel.";
+function storageGet(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function storageSet(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Private windows may refuse storage; the page still works without it.
+  }
+}
+
+function storageRemove(key) {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // ignore
+  }
+}
 
 function hasSecureCrypto() {
   return window.isSecureContext && window.crypto && window.crypto.subtle;
@@ -60,9 +91,7 @@ function normalizePublicKey(pem) {
   return pem.replace(/\r/g, "").trim();
 }
 
-function isWaitingForResponse() {
-  return chatInFlight || activeRecoveryPromise !== null;
-}
+// ---------------------------------------------------------------- composer
 
 function setChatEnabled(enabled) {
   isAuthenticated = enabled;
@@ -80,22 +109,18 @@ function focusPrompt() {
   promptEl.focus({ preventScroll: true });
 }
 
-function focusPublicKeyInput() {
-  if (publicKeyInputEl.disabled || authFormEl.classList.contains("hidden")) {
-    return;
-  }
-  publicKeyInputEl.focus({ preventScroll: true });
-}
-
 function updateComposerEnabled() {
-  const busy = isAuthenticated && isWaitingForResponse();
+  const busy = isAuthenticated && chatInFlight;
   const wasDisabled = promptEl.disabled;
   promptEl.disabled = !isAuthenticated || busy;
   sendBtn.disabled = !isAuthenticated || busy;
+  weekSelectEl.disabled = !isAuthenticated || busy;
+  for (const button of actionsEl.querySelectorAll("button")) {
+    button.disabled = !isAuthenticated || busy;
+  }
   chatForm.setAttribute("aria-busy", busy ? "true" : "false");
-  // Disabling the textarea or the Send button drops focus to <body>, so put the
-  // caret back in the composer the moment it becomes usable again — on first
-  // unlock after login and after every turn finishes.
+  // Disabling the textarea drops focus to <body>, so put the caret back in the
+  // composer the moment it becomes usable again.
   if (wasDisabled && !promptEl.disabled) {
     focusPrompt();
   }
@@ -126,149 +151,27 @@ function stopDotTextAnimation(animation, reset) {
   }
 }
 
-function setPromptPlaceholderIdle() {
-  promptEl.placeholder = PROMPT_PLACEHOLDER_IDLE;
-}
-
-function renderWorkingPlaceholder(text) {
-  promptEl.placeholder = text;
-}
-
 function startWorkingPlaceholder() {
-  stopWorkingPlaceholder();
-  startDotTextAnimation(
-    workingPlaceholderAnimation,
-    PROMPT_PLACEHOLDER_WORKING_BASE,
-    renderWorkingPlaceholder
-  );
+  startDotTextAnimation(workingPlaceholderAnimation, PROMPT_PLACEHOLDER_WORKING_BASE, (text) => {
+    promptEl.placeholder = text;
+  });
 }
 
 function stopWorkingPlaceholder() {
   stopDotTextAnimation(workingPlaceholderAnimation, () => {
-    if (isAuthenticated) {
-      setPromptPlaceholderIdle();
-    }
+    promptEl.placeholder = PROMPT_PLACEHOLDER_IDLE;
   });
 }
 
-function startLoggingInAnimation() {
-  stopLoggingInAnimation();
-  startDotTextAnimation(loggingInAnimation, AUTH_LOGGING_IN_BASE, (text) => {
-    authLoggingInTitleEl.textContent = text;
-  });
-}
-
-function stopLoggingInAnimation() {
-  stopDotTextAnimation(loggingInAnimation, () => {
-    authLoggingInTitleEl.textContent = AUTH_LOGGING_IN_BASE;
-  });
-}
-
-function assistantHasContent() {
-  const last = conversation[conversation.length - 1];
-  return last?.role === "assistant" && last.content.trim().length > 0;
-}
-
-let activeRecoveryTurnId = null;
-let activeRecoveryPromise = null;
-
-function scheduleChatTurnRecovery(turnId) {
-  if (activeRecoveryTurnId === turnId && activeRecoveryPromise) {
-    return activeRecoveryPromise;
-  }
-
-  activeRecoveryTurnId = turnId;
-  updateComposerEnabled();
-  activeRecoveryPromise = recoverChatTurn(turnId)
-    .catch((error) => {
-      if (error?.message === "Authentication required.") {
-        throw error;
-      }
-    })
-    .finally(() => {
-      stopWorkingPlaceholder();
-      if (activeRecoveryTurnId === turnId) {
-        activeRecoveryTurnId = null;
-        activeRecoveryPromise = null;
-      }
-      updateComposerEnabled();
-    });
-  return activeRecoveryPromise;
-}
-
-async function recoverChatTurn(turnId) {
-  let lastError;
-
-  for (let attempt = 0; attempt <= MAX_CHAT_RETRIES; attempt++) {
-    try {
-      await executeChatRequest({
-        turnId,
-        resetAssistant: true,
-        silentReplay: true,
-      });
-      refreshSessionState().catch(() => {});
-      return;
-    } catch (error) {
-      lastError = error;
-      if (error.message === "Authentication required.") {
-        throw error;
-      }
-      if (assistantHasContent()) {
-        refreshSessionState().catch(() => {});
-        return;
-      }
-      if (!isRetryableChatError(error) || attempt === MAX_CHAT_RETRIES) {
-        break;
-      }
-      await sleep(CHAT_RETRY_DELAY_MS * (attempt + 1));
-    }
-  }
-
-  for (let recovery = 0; recovery <= MAX_CHAT_RECOVERY_ATTEMPTS; recovery++) {
-    try {
-      await executeChatRequest({
-        turnId,
-        resetAssistant: true,
-        silentReplay: true,
-      });
-      refreshSessionState().catch(() => {});
-      return;
-    } catch (error) {
-      lastError = error;
-      if (error.message === "Authentication required.") {
-        throw error;
-      }
-      if (assistantHasContent()) {
-        refreshSessionState().catch(() => {});
-        return;
-      }
-      if (!isRetryableChatError(error) || recovery === MAX_STREAM_RECOVERY_ATTEMPTS) {
-        break;
-      }
-      await sleep(1500 * (recovery + 1));
-    }
-  }
-
-  const last = conversation[conversation.length - 1];
-  if (last?.role === "assistant" && !last.content.trim()) {
-    conversation.pop();
-    renderMessages();
-  }
-  if (!assistantHasContent()) {
-    showError(formatUserFacingError(lastError || new Error("Something went wrong.")));
-  }
-}
+// ---------------------------------------------------------------- auth
 
 function getStoredPublicKey() {
-  const raw = localStorage.getItem(STORAGE_KEY);
+  const raw = storageGet(STORAGE_KEY);
   if (!raw) {
     return null;
   }
   const normalized = normalizePublicKey(raw);
-  if (!normalized.includes("BEGIN PUBLIC KEY")) {
-    return null;
-  }
-  return normalized;
+  return normalized.includes("BEGIN PUBLIC KEY") ? normalized : null;
 }
 
 function showAuthLoggingIn() {
@@ -276,51 +179,35 @@ function showAuthLoggingIn() {
   authGateEl.setAttribute("aria-hidden", "false");
   authLoggingInEl.classList.remove("hidden");
   authFormEl.classList.add("hidden");
-  authErrorEl.textContent = "";
-  authErrorEl.classList.add("hidden");
+  setAuthStatus("");
   setChatEnabled(false);
-  renderSessionChrome(null);
-  startLoggingInAnimation();
+  startDotTextAnimation(loggingInAnimation, AUTH_LOGGING_IN_BASE, (text) => {
+    authLoggingInTitleEl.textContent = text;
+  });
 }
 
 function showAuthLoginForm(message = "") {
   authGateEl.classList.remove("hidden");
   authGateEl.setAttribute("aria-hidden", "false");
   authLoggingInEl.classList.add("hidden");
-  stopLoggingInAnimation();
+  stopDotTextAnimation(loggingInAnimation);
   authFormEl.classList.remove("hidden");
-  if (message) {
-    authErrorEl.textContent = message;
-    authErrorEl.classList.remove("hidden");
-  } else {
-    authErrorEl.textContent = "";
-    authErrorEl.classList.add("hidden");
-  }
+  setAuthStatus(message);
   setChatEnabled(false);
-  renderSessionChrome(null);
-  // The gate is the first thing a user meets, so put the caret in the key box
-  // straight away — on first load and whenever the form comes back after a
-  // failed or expired login.
-  focusPublicKeyInput();
+  publicKeyInputEl.focus({ preventScroll: true });
 }
 
 function hideAuthGate() {
-  stopLoggingInAnimation();
+  stopDotTextAnimation(loggingInAnimation);
   authGateEl.classList.add("hidden");
   authGateEl.setAttribute("aria-hidden", "true");
-  authErrorEl.textContent = "";
-  authErrorEl.classList.add("hidden");
+  setAuthStatus("");
   setChatEnabled(true);
 }
 
 function setAuthStatus(message) {
-  if (message) {
-    authErrorEl.textContent = message;
-    authErrorEl.classList.remove("hidden");
-  } else {
-    authErrorEl.textContent = "";
-    authErrorEl.classList.add("hidden");
-  }
+  authErrorEl.textContent = message || "";
+  authErrorEl.classList.toggle("hidden", !message);
 }
 
 function pemToArrayBuffer(pem) {
@@ -337,104 +224,27 @@ function pemToArrayBuffer(pem) {
 }
 
 function bufferToBase64(buffer) {
-  const bytes = new Uint8Array(buffer);
   let binary = "";
-  for (const byte of bytes) {
+  for (const byte of new Uint8Array(buffer)) {
     binary += String.fromCharCode(byte);
   }
   return btoa(binary);
 }
 
-async function importPublicKey(pem) {
+async function encryptChallenge(publicKeyPem, nonceBase64) {
   if (!hasSecureCrypto()) {
     throw new Error(INSECURE_CONTEXT_MESSAGE);
   }
-
-  return crypto.subtle.importKey(
+  const key = await crypto.subtle.importKey(
     "spki",
-    pemToArrayBuffer(normalizePublicKey(pem)),
+    pemToArrayBuffer(normalizePublicKey(publicKeyPem)),
     { name: "RSA-OAEP", hash: "SHA-256" },
     false,
     ["encrypt"]
   );
-}
-
-async function encryptChallenge(publicKeyPem, nonceBase64) {
-  const key = await importPublicKey(publicKeyPem);
   const nonceBytes = Uint8Array.from(atob(nonceBase64), (char) => char.charCodeAt(0));
   const ciphertext = await crypto.subtle.encrypt({ name: "RSA-OAEP" }, key, nonceBytes);
   return bufferToBase64(ciphertext);
-}
-
-function formatAssessmentTime(isoString) {
-  if (!isoString) {
-    return "";
-  }
-  const date = new Date(isoString);
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-  return date.toLocaleString();
-}
-
-function renderAssessmentTimes(state) {
-  const start = state?.assessmentStartTime;
-  const end = state?.assessmentEndTime;
-
-  if (!start) {
-    assessmentTimesEl.classList.add("hidden");
-    assessmentStartEl.textContent = "";
-    assessmentEndEl.textContent = "";
-    assessmentEndEl.classList.add("hidden");
-    return;
-  }
-
-  assessmentTimesEl.classList.remove("hidden");
-  assessmentStartEl.textContent = `Start: ${formatAssessmentTime(start)}`;
-
-  if (end) {
-    assessmentEndEl.textContent = `End: ${formatAssessmentTime(end)}`;
-    assessmentEndEl.classList.remove("hidden");
-  } else {
-    assessmentEndEl.textContent = "";
-    assessmentEndEl.classList.add("hidden");
-  }
-}
-
-function renderEarlyCoachingBanner(state) {
-  if (state?.coachingEnteredBeforeResults === true) {
-    earlyCoachingBannerLatched = true;
-  }
-  if (earlyCoachingBannerLatched) {
-    earlyCoachingBannerEl.classList.remove("hidden");
-  } else {
-    earlyCoachingBannerEl.classList.add("hidden");
-  }
-}
-
-function renderSessionChrome(state) {
-  renderAssessmentTimes(state);
-  renderEarlyCoachingBanner(state);
-}
-
-async function refreshSessionState() {
-  if (!isAuthenticated) {
-    return;
-  }
-
-  const response = await fetch("/api/session/state", {
-    credentials: "include",
-    headers: sessionHeaders(),
-  });
-  if (response.status === 401) {
-    return;
-  }
-  if (!response.ok) {
-    return;
-  }
-
-  const state = await response.json();
-  renderSessionChrome(state);
 }
 
 async function authenticate(publicKeyPem) {
@@ -442,7 +252,6 @@ async function authenticate(publicKeyPem) {
   if (!challengeResponse.ok) {
     throw new Error("Failed to get authentication challenge.");
   }
-
   const { challenge_id: challengeID, nonce } = await challengeResponse.json();
   const ciphertext = await encryptChallenge(publicKeyPem, nonce);
 
@@ -450,89 +259,202 @@ async function authenticate(publicKeyPem) {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      challenge_id: challengeID,
-      ciphertext,
-    }),
+    body: JSON.stringify({ challenge_id: challengeID, ciphertext }),
   });
-
   if (!verifyResponse.ok) {
     throw new Error("Authentication failed.");
   }
-
   const verified = await verifyResponse.json().catch(() => null);
   sessionToken = verified?.session_token || "";
 }
+
+async function completeAuthentication(publicKeyPem) {
+  await authenticate(publicKeyPem);
+  setAuthStatus("Getting your tutor ready...");
+  await bootstrapSession();
+  storageSet(STORAGE_KEY, publicKeyPem);
+  hideAuthGate();
+}
+
+async function initAuth() {
+  setChatEnabled(false);
+  if (!hasSecureCrypto()) {
+    showAuthLoginForm(INSECURE_CONTEXT_MESSAGE);
+    return;
+  }
+  const storedKey = getStoredPublicKey();
+  if (!storedKey) {
+    showAuthLoginForm();
+    return;
+  }
+  showAuthLoggingIn();
+  try {
+    await completeAuthentication(storedKey);
+  } catch {
+    storageRemove(STORAGE_KEY);
+    showAuthLoginForm();
+  }
+}
+
+function handleUnauthorized() {
+  storageRemove(STORAGE_KEY);
+  showAuthLoginForm("Your session expired or is invalid. Enter your public key again.");
+  return new Error("Authentication required.");
+}
+
+// ---------------------------------------------------------------- tutor state
 
 async function bootstrapSession() {
   const response = await fetch("/api/session/bootstrap", {
     method: "POST",
     credentials: "include",
-    headers: sessionHeaders({
-      "Content-Type": "application/json",
-      [TURN_ID_HEADER]: BOOTSTRAP_TURN_ID,
-    }),
-    body: JSON.stringify({ model: CHAT_MODEL }),
+    headers: sessionHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ study_code: storageGet(STUDY_CODE_KEY) || "" }),
   });
-
   if (response.status === 401) {
     throw new Error("Authentication required.");
   }
-
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || "Failed to initialize session.");
+    throw new Error((await response.text()) || "Failed to start the tutor.");
   }
-
   const data = await response.json();
   conversation.length = 0;
   conversation.push({ role: "user", content: "start", internal: true });
   conversation.push({ role: "assistant", content: data.assistant || "" });
   renderMessages();
-  await refreshSessionState();
+  applyState(data.state);
 }
 
-async function completeAuthentication(publicKeyPem) {
-  await authenticate(publicKeyPem);
-  setAuthStatus("Initializing session...");
-  await bootstrapSession();
-  localStorage.setItem(STORAGE_KEY, publicKeyPem);
-  hideAuthGate();
-  await refreshSessionState();
+function applyState(state) {
+  if (!state) {
+    return;
+  }
+  tutorState = state;
+  if (state.studyCode) {
+    storageSet(STUDY_CODE_KEY, state.studyCode);
+  }
+  renderSidebar();
+  renderActions();
 }
 
-async function initAuth() {
-  setChatEnabled(false);
+const LEVEL_CLASSES = {
+  not_ready: "level-not-ready",
+  competent: "level-competent",
+  exceptional: "level-exceptional",
+};
 
-  if (!hasSecureCrypto()) {
-    showAuthLoginForm(INSECURE_CONTEXT_MESSAGE);
+function readinessClass(label) {
+  if (label.startsWith("Likely Exceptional")) return "level-exceptional";
+  if (label.startsWith("Likely Competent")) return "level-competent";
+  if (label.startsWith("Not Ready")) return "level-not-ready";
+  return "level-none";
+}
+
+function renderSidebar() {
+  const state = tutorState || {};
+  const hasStudent = Boolean(state.studyCode);
+  introCardEl.classList.toggle("hidden", hasStudent);
+  profileCardEl.classList.toggle("hidden", !hasStudent);
+  if (hasStudent) {
+    studyCodeEl.textContent = state.studyCode;
+    majorLineEl.textContent = state.major ? `Major: ${state.major}` : "";
+  }
+
+  const week = state.week;
+  weekCardEl.classList.toggle("hidden", !week);
+  if (!week) {
     return;
   }
 
-  const storedKey = getStoredPublicKey();
-  if (storedKey) {
-    showAuthLoggingIn();
-    try {
-      await completeAuthentication(storedKey);
-      return;
-    } catch {
-      localStorage.removeItem(STORAGE_KEY);
-      showAuthLoginForm();
-      return;
-    }
+  weekSelectEl.innerHTML = "";
+  for (const option of state.weeks || []) {
+    const el = document.createElement("option");
+    el.value = String(option.number);
+    el.textContent = option.readiness ? `${option.title} · ${option.readiness}` : option.title;
+    el.selected = option.number === week.number;
+    weekSelectEl.appendChild(el);
   }
 
-  showAuthLoginForm();
+  lessonsCountEl.textContent = `${week.lessonsDone} of ${week.lessonsTotal}`;
+  const percent = week.lessonsTotal ? Math.round((100 * week.lessonsDone) / week.lessonsTotal) : 0;
+  lessonsBarEl.style.width = `${percent}%`;
+
+  partsEl.innerHTML = "";
+  for (const part of week.readiness?.parts || []) {
+    const item = document.createElement("li");
+    const name = document.createElement("span");
+    name.textContent = part.label;
+    const badge = document.createElement("span");
+    badge.className = `badge ${LEVEL_CLASSES[part.level] || "level-none"}`;
+    if (part.levelLabel) {
+      badge.textContent = part.levelLabel;
+      badge.title = `Latest rated practice, ${part.attempts} rated ${part.attempts === 1 ? "try" : "tries"}`;
+    } else {
+      badge.textContent = "Not tried";
+    }
+    item.append(name, badge);
+    partsEl.appendChild(item);
+  }
+
+  const label = week.readiness?.label || "Not started";
+  readinessEl.textContent = label;
+  readinessEl.className = `badge ${readinessClass(label)}`;
+  nextStepEl.innerHTML = renderInlineMarkdown(week.nextStep || "");
 }
+
+// renderActions offers buttons for what the student can do next.
+function renderActions() {
+  actionsEl.innerHTML = "";
+  const state = tutorState;
+  const buttons = [];
+  if (state?.phase === "choose_week") {
+    for (const option of state.weeks || []) {
+      buttons.push({ label: `Week ${option.number}`, action: `week:${option.number}`, text: `Week ${option.number}` });
+    }
+  } else if (state?.phase === "studying" && state.week) {
+    const activity = state.activity;
+    const practicing = activity && activity.kind !== "lesson";
+    if (practicing && activity.open) {
+      buttons.push({ label: "💡 Hint", action: "hint", primary: true });
+      buttons.push({ label: "✅ Show solution", action: "solution" });
+    } else if (practicing) {
+      buttons.push({ label: "🔁 Another one", action: "another", primary: true });
+      buttons.push({ label: "⬆️ Harder one", action: "another:harder", text: "A harder one" });
+    }
+    if (activity?.kind === "lesson") {
+      buttons.push({ label: "➡️ Next lesson", action: "next_lesson", primary: true });
+    } else if (state.week.lessonsDone < state.week.lessonsTotal) {
+      buttons.push({ label: state.week.lessonsDone ? "📖 Continue lessons" : "📖 Teach me", action: "lesson", primary: !activity });
+    }
+    for (const kind of state.week.practiceKinds || []) {
+      const emoji = { concept: "💬", code: "🧩", bug: "🐞" }[kind.kind] || "📝";
+      buttons.push({ label: `${emoji} ${kind.label}`, action: `practice:${kind.kind}` });
+    }
+    buttons.push({ label: "🎯 Interview guide", action: "guide" });
+    buttons.push({ label: "📊 My progress", action: "progress" });
+  }
+  for (const spec of buttons) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = spec.primary ? "chip primary" : "chip";
+    button.textContent = spec.label;
+    button.disabled = !isAuthenticated || chatInFlight;
+    button.addEventListener("click", () => {
+      runUserTurn(spec.text || spec.label, spec.action);
+      closeSidebarOnMobile();
+    });
+    actionsEl.appendChild(button);
+  }
+  actionsEl.classList.toggle("hidden", buttons.length === 0);
+}
+
+// ---------------------------------------------------------------- messages
 
 function initMarkdown() {
   if (typeof marked === "undefined" || typeof DOMPurify === "undefined") {
     return;
   }
-  marked.setOptions({
-    gfm: true,
-    breaks: true,
-  });
+  marked.setOptions({ gfm: true, breaks: true });
   DOMPurify.addHook("afterSanitizeAttributes", (node) => {
     if (node.tagName === "A") {
       node.setAttribute("rel", "noopener noreferrer");
@@ -541,77 +463,67 @@ function initMarkdown() {
   });
 }
 
-const completeIPyFencePattern = /```(?:json)?\s*_ipy(?:intervu)?\s*\n[\s\S]*?\n```/gi;
-
-function stripTrailingPartialIPyFence(content) {
-  const fenceCount = (content.match(/```/g) || []).length;
-  if (fenceCount === 0 || fenceCount % 2 === 0) {
-    return content;
-  }
-  const open = content.lastIndexOf("```");
-  const after = content.slice(open + 3).trim();
-  if (
-    after === "" ||
-    after.startsWith("json") ||
-    after.startsWith("_") ||
-    after.toLowerCase().startsWith("_ipy")
-  ) {
-    return content.slice(0, open).replace(/[ \t\r\n]+$/, "");
-  }
-  return content;
-}
-
-function stripClientVisibleAssistantContent(content) {
-  if (!content) {
-    return "";
-  }
-  let stripped = content.replace(completeIPyFencePattern, "");
-  stripped = stripTrailingPartialIPyFence(stripped);
-  return stripped.replace(/[ \t\r\n]+$/, "");
-}
-
-function renderAssistantMarkdown(content) {
-  const visible = stripClientVisibleAssistantContent(content);
-  if (!visible) {
-    return "";
-  }
+function renderMarkdown(content) {
   if (typeof marked === "undefined" || typeof DOMPurify === "undefined") {
-    return visible;
+    const div = document.createElement("div");
+    div.textContent = content;
+    return div.innerHTML;
   }
-  return DOMPurify.sanitize(marked.parse(visible), { USE_PROFILES: { html: true } });
+  return DOMPurify.sanitize(marked.parse(content), { USE_PROFILES: { html: true } });
+}
+
+function renderInlineMarkdown(content) {
+  if (typeof marked === "undefined" || typeof DOMPurify === "undefined") {
+    const div = document.createElement("div");
+    div.textContent = content;
+    return div.innerHTML;
+  }
+  return DOMPurify.sanitize(marked.parseInline(content), { USE_PROFILES: { html: true } });
+}
+
+function addCopyButtons(container) {
+  for (const pre of container.querySelectorAll("pre")) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "copy-code ghost small";
+    button.textContent = "Copy";
+    button.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText((pre.querySelector("code") || pre).innerText);
+        button.textContent = "Copied";
+        setTimeout(() => (button.textContent = "Copy"), 1500);
+      } catch {
+        button.textContent = "Select and copy";
+      }
+    });
+    pre.appendChild(button);
+  }
 }
 
 function renderMessages() {
   messagesEl.innerHTML = "";
-
-  if (conversation.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "message empty";
-    empty.textContent = "Start a conversation by sending a message.";
-    messagesEl.appendChild(empty);
-    return;
-  }
-
   for (const message of conversation) {
     if (message.internal) {
       continue;
     }
-
     const item = document.createElement("div");
     item.className = `message ${message.role}`;
-
     if (message.role === "assistant") {
-      const body = document.createElement("div");
-      body.className = "markdown-body";
-      body.innerHTML = renderAssistantMarkdown(message.content);
-      item.appendChild(body);
+      if (!message.content) {
+        item.classList.add("pending");
+        item.innerHTML = '<span class="typing" aria-label="The tutor is thinking"><span></span><span></span><span></span></span>';
+      } else {
+        const body = document.createElement("div");
+        body.className = "markdown-body";
+        body.innerHTML = renderMarkdown(message.content);
+        addCopyButtons(body);
+        item.appendChild(body);
+      }
     } else {
       item.textContent = message.content;
     }
-
     messagesEl.appendChild(item);
   }
-
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
@@ -620,42 +532,20 @@ function showError(text) {
   renderMessages();
 }
 
-function formatUserFacingError(error) {
-  const message = error?.message || "";
-  const lowered = message.toLowerCase();
-
-  if (isRetryableNetworkError(error)) {
-    return (
-      "Connection lost while waiting for a response. " +
-      "Your reply may have been cut off. " +
-      "Please try again, re-enter your last posting."
-    );
-  }
-
-  return message || "Something went wrong.";
-}
+// ---------------------------------------------------------------- chat turns
 
 function isRetryableNetworkError(error) {
-  const message = error?.message || "";
-  const lowered = message.toLowerCase();
-
+  const lowered = (error?.message || "").toLowerCase();
   return (
     error?.name === "TimeoutError" ||
     lowered === "load failed" ||
     lowered === "failed to fetch" ||
     lowered.includes("networkerror") ||
     lowered.includes("request timed out") ||
+    lowered.includes("upstream error") ||
+    lowered.includes("bad gateway") ||
     (error instanceof TypeError && lowered.includes("fetch"))
   );
-}
-
-function isRetryableChatError(error) {
-  if (isRetryableNetworkError(error)) {
-    return true;
-  }
-
-  const message = (error?.message || "").toLowerCase();
-  return message.includes("upstream error") || message.includes("bad gateway");
 }
 
 function sleep(ms) {
@@ -664,136 +554,105 @@ function sleep(ms) {
 
 function chatPayloadMessages() {
   return conversation
-    .filter(
-      (message) =>
-        message.role === "user" ||
-        (message.role === "assistant" && message.content.trim() !== "")
-    )
-    .map(({ role, content }) => ({
-      role,
-      content:
-        role === "assistant" ? stripClientVisibleAssistantContent(content) : content,
-    }));
+    .filter((m) => m.role === "user" || (m.role === "assistant" && m.content.trim() !== ""))
+    .map(({ role, content }) => ({ role, content }));
 }
 
-async function executeChatRequest({
-  turnId,
-  resetAssistant,
-  silentReplay = false,
-}) {
-  if (activeChatAbort) {
-    activeChatAbort.abort();
-  }
-
+// postChatTurn sends one turn. Retries reuse the turn id, so the server replays the reply
+// it already produced instead of running the turn twice.
+async function postChatTurn(turnId, action) {
   const controller = new AbortController();
-  activeChatAbort = controller;
   const timeoutId = setTimeout(() => {
     controller.abort(new DOMException("Request timed out", "TimeoutError"));
   }, CHAT_READ_TIMEOUT_MS);
-
   try {
-    if (resetAssistant) {
-      const last = conversation[conversation.length - 1];
-      if (last?.role === "assistant") {
-        last.content = "";
-        if (!silentReplay) {
-          renderMessages();
-        }
-      }
-    }
-
-    const payload = {
-      model: CHAT_MODEL,
-      messages: chatPayloadMessages(),
-    };
-
     const response = await fetch("/api/chat", {
       method: "POST",
       credentials: "include",
       signal: controller.signal,
-      headers: sessionHeaders({
-        "Content-Type": "application/json",
-        [TURN_ID_HEADER]: turnId,
+      headers: sessionHeaders({ "Content-Type": "application/json", [TURN_ID_HEADER]: turnId }),
+      body: JSON.stringify({
+        messages: chatPayloadMessages(),
+        action: action || "",
+        study_code: storageGet(STUDY_CODE_KEY) || "",
       }),
-      body: JSON.stringify(payload),
     });
-
     if (response.status === 401) {
-      localStorage.removeItem(STORAGE_KEY);
-      showAuthLoginForm("Your session expired or is invalid. Enter your public key again.");
-      throw new Error("Authentication required.");
+      throw handleUnauthorized();
     }
-
+    if (response.status === 409) {
+      throw new Error("upstream error: turn still running");
+    }
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(errorText || `Request failed with status ${response.status}`);
+      throw new Error((await response.text()) || `Request failed with status ${response.status}`);
     }
-
-    const data = await response.json();
-    const content = stripClientVisibleAssistantContent(
-      data.choices?.[0]?.message?.content || ""
-    );
-    const last = conversation[conversation.length - 1];
-    if (last?.role === "assistant") {
-      last.content = content;
-    } else {
-      conversation.push({ role: "assistant", content });
-    }
-    renderMessages();
-    refreshSessionState().catch(() => {});
+    return await response.json();
   } finally {
     clearTimeout(timeoutId);
-    activeChatAbort = null;
   }
 }
 
-async function sendMessage(text) {
-  if (!isAuthenticated) {
-    throw new Error("Authentication required.");
-  }
-
-  if (chatInFlight) {
+async function runUserTurn(text, action = "") {
+  if (!isAuthenticated || chatInFlight) {
     return;
   }
-
   chatInFlight = true;
   updateComposerEnabled();
   startWorkingPlaceholder();
+  conversation.push({ role: "user", content: text });
+  const reply = { role: "assistant", content: "" };
+  conversation.push(reply);
+  renderMessages();
 
+  const turnId = crypto.randomUUID();
   try {
-    const turnId = crypto.randomUUID();
-    conversation.push({ role: "user", content: text });
-    conversation.push({ role: "assistant", content: "" });
-    renderMessages();
-
-    try {
-      await executeChatRequest({ turnId, resetAssistant: false });
-      refreshSessionState().catch(() => {});
-    } catch (error) {
-      if (error.message === "Authentication required.") {
-        throw error;
+    let lastError = null;
+    for (let attempt = 0; attempt < MAX_CHAT_ATTEMPTS; attempt += 1) {
+      try {
+        const data = await postChatTurn(turnId, action);
+        reply.content = data.choices?.[0]?.message?.content || "";
+        renderMessages();
+        applyState(data.state);
+        lastError = null;
+        break;
+      } catch (error) {
+        lastError = error;
+        if (error.message === "Authentication required." || !isRetryableNetworkError(error)) {
+          break;
+        }
+        await sleep(CHAT_RETRY_DELAY_MS * (attempt + 1));
       }
-      await scheduleChatTurnRecovery(turnId);
+    }
+    if (lastError) {
+      conversation.splice(conversation.indexOf(reply), 1);
+      if (lastError.message !== "Authentication required.") {
+        showError(
+          isRetryableNetworkError(lastError)
+            ? "Connection lost while waiting for the tutor. Please send your message again."
+            : lastError.message || "Something went wrong."
+        );
+      } else {
+        renderMessages();
+      }
     }
   } finally {
     chatInFlight = false;
-    activeChatAbort = null;
     stopWorkingPlaceholder();
     updateComposerEnabled();
+    renderActions();
   }
 }
 
+// ---------------------------------------------------------------- events
+
 authFormEl.addEventListener("submit", async (event) => {
   event.preventDefault();
-
   const publicKey = normalizePublicKey(publicKeyInputEl.value);
   if (!publicKey) {
     showAuthLoginForm("Enter a public key to continue.");
     return;
   }
-
   authSubmitBtn.disabled = true;
-
   try {
     await completeAuthentication(publicKey);
   } catch (error) {
@@ -803,36 +662,75 @@ authFormEl.addEventListener("submit", async (event) => {
   }
 });
 
-chatForm.addEventListener("submit", async (event) => {
+chatForm.addEventListener("submit", (event) => {
   event.preventDefault();
-
   const text = promptEl.value.trim();
   if (!text || !isAuthenticated) {
     focusPrompt();
     return;
   }
-
   if (text.length > MAX_USER_MESSAGE_CHARS) {
-    showError(
-      `Your response was too long. Please limit your message to ${MAX_USER_MESSAGE_CHARS} characters or fewer.`
-    );
-    focusPrompt();
+    showError(`Your message is too long. Please keep it to ${MAX_USER_MESSAGE_CHARS} characters or fewer.`);
     return;
   }
-
   promptEl.value = "";
+  runUserTurn(text);
+});
 
-  try {
-    await sendMessage(text);
-  } catch (error) {
-    if (isAuthenticated) {
-      showError(formatUserFacingError(error));
-    }
-  } finally {
-    focusPrompt();
+promptEl.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+    event.preventDefault();
+    chatForm.requestSubmit();
   }
 });
 
-renderMessages();
+weekSelectEl.addEventListener("change", () => {
+  const number = Number(weekSelectEl.value);
+  if (tutorState?.week && number !== tutorState.week.number) {
+    runUserTurn(`Switch to Week ${number}`, `week:${number}`);
+    closeSidebarOnMobile();
+  }
+});
+
+copyCodeBtn.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(studyCodeEl.textContent);
+    copyCodeBtn.textContent = "Copied";
+    setTimeout(() => (copyCodeBtn.textContent = "Copy"), 1500);
+  } catch {
+    copyCodeBtn.textContent = "Copy failed";
+  }
+});
+
+switchStudentBtn.addEventListener("click", async () => {
+  const code = tutorState?.studyCode || "";
+  const ok = window.confirm(
+    `Use a different study code?\n\nThis browser will forget ${code}. If it's yours, write it down first so you can come back to your progress.`
+  );
+  if (!ok || chatInFlight) {
+    return;
+  }
+  try {
+    await fetch("/api/session/reset", { method: "POST", credentials: "include", headers: sessionHeaders() });
+    storageRemove(STUDY_CODE_KEY);
+    await bootstrapSession();
+    closeSidebarOnMobile();
+  } catch (error) {
+    showError(error.message || "Couldn't switch students. Please reload the page.");
+  }
+});
+
+function closeSidebarOnMobile() {
+  sidebarEl.classList.remove("open");
+  toggleSidebarBtn.setAttribute("aria-expanded", "false");
+}
+
+toggleSidebarBtn.addEventListener("click", () => {
+  const open = sidebarEl.classList.toggle("open");
+  toggleSidebarBtn.setAttribute("aria-expanded", open ? "true" : "false");
+});
+
 initMarkdown();
+renderMessages();
+renderActions();
 initAuth();

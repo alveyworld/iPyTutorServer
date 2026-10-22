@@ -8,17 +8,17 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-PRIVATE_KEY_SRC="${1:-$ROOT_DIR/env/ipyintervu-key.pem}"
+PRIVATE_KEY_SRC="${1:-$ROOT_DIR/env/ipytutor-key.pem}"
 
-ENV_FILE="/etc/openrouter-app/env"
-PRIVATE_KEY_DST="/etc/openrouter-app/auth-private-key.pem"
+ENV_FILE="/etc/ipytutor/env"
+PRIVATE_KEY_DST="/etc/ipytutor/auth-private-key.pem"
 
-mkdir -p /etc/openrouter-app
+mkdir -p /etc/ipytutor
 
-if ! id openrouter >/dev/null 2>&1; then
-  useradd --system --home /var/lib/openrouter --shell /usr/sbin/nologin openrouter
-  mkdir -p /var/lib/openrouter
-  chown openrouter:openrouter /var/lib/openrouter
+if ! id ipytutor >/dev/null 2>&1; then
+  useradd --system --home /var/lib/ipytutor --shell /usr/sbin/nologin ipytutor
+  mkdir -p /var/lib/ipytutor
+  chown ipytutor:ipytutor /var/lib/ipytutor
 fi
 
 if [[ -f "$ENV_FILE" ]]; then
@@ -41,8 +41,9 @@ if [[ -f "$PRIVATE_KEY_DST" ]]; then
 elif [[ ! -f "$PRIVATE_KEY_SRC" ]]; then
   echo "Private key not found: $PRIVATE_KEY_SRC" >&2
   echo "Generate one with:" >&2
-  echo "  openssl genpkey -algorithm RSA -out $ROOT_DIR/env/ipyintervu-key.pem -pkeyopt rsa_keygen_bits:2048" >&2
-  echo "  openssl rsa -in $ROOT_DIR/env/ipyintervu-key.pem -pubout -out $ROOT_DIR/env/ipyintervu-pub.pem" >&2
+  echo "  openssl genpkey -algorithm RSA -out $ROOT_DIR/env/ipytutor-key.pem -pkeyopt rsa_keygen_bits:2048" >&2
+  echo "  openssl rsa -in $ROOT_DIR/env/ipytutor-key.pem -pubout -out $ROOT_DIR/env/ipytutor-pub.pem" >&2
+  echo "Or pass the iPyIntervu private key, so students can use the public key they already have." >&2
   exit 1
 else
   install -m 600 -o root -g root "$PRIVATE_KEY_SRC" "$PRIVATE_KEY_DST"
@@ -51,7 +52,7 @@ fi
 
 chown root:root "$ENV_FILE"
 chmod 600 "$ENV_FILE"
-chown root:openrouter "$PRIVATE_KEY_DST"
+chown root:ipytutor "$PRIVATE_KEY_DST"
 chmod 640 "$PRIVATE_KEY_DST"
 
 echo "Secrets installed."
