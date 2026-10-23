@@ -35,7 +35,7 @@ The application lives in [`openrouter-app/`](openrouter-app/), deployment script
 | Server-written messages (welcome, week overview, interview guide, help) | `tutor_messages.go` |
 | Page state for the sidebar and buttons | `tutor_state.go` |
 | OpenRouter client | `llm.go` |
-| Browser UI | `static/` |
+| Browser UI; colors (with the reasoning behind them at the top of the stylesheet) and the parrot logo | `static/`, `static/style.css`, `static/parrot.svg` |
 
 A few design points:
 

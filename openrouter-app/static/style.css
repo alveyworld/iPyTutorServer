@@ -1,52 +1,85 @@
+/*
+ * Colors follow how color affects learning (Adobe Express, "How color affects learning,
+ * mood and behavior"):
+ * - a calm base: warm neutral backgrounds cut distraction and eye strain, and a cool
+ *   teal-blue primary supports focus;
+ * - bright colors only as small accents, never as large backgrounds, to avoid
+ *   overstimulation; red is kept for real errors;
+ * - consistent color coding, so each kind of activity is recognizable at a glance:
+ *   lessons teal-blue, concept questions green, code problems indigo, bug hunts orange,
+ *   hints and interview advice marigold;
+ * - high-contrast text: every text color passes WCAG AA (4.5:1) on its background.
+ */
 :root {
-  color-scheme: dark;
-  --bg: #0f1419;
-  --bg-deep: #0b1016;
-  --panel: #1a2332;
-  --panel-2: #141c28;
-  --border: #2d3a4f;
-  --text: #e8eef7;
-  --muted: #9aa8bc;
-  --accent: #4f8cff;
-  --accent-hover: #3a7af0;
-  --accent-soft: rgba(79, 140, 255, 0.14);
-  --user: #1f3d5c;
-  --assistant: #182433;
-  --code-bg: rgba(0, 0, 0, 0.35);
-  --error: #ff6b6b;
-  --not-ready: #ff8a80;
-  --not-ready-bg: rgba(255, 107, 107, 0.14);
-  --competent: #ffd36b;
-  --competent-bg: rgba(255, 211, 107, 0.14);
-  --exceptional: #6be3a0;
-  --exceptional-bg: rgba(107, 227, 160, 0.14);
-  --none-bg: rgba(154, 168, 188, 0.12);
+  color-scheme: light;
+  --bg: #f6f3ec;
+  --bg-deep: #efebe2;
+  --panel: #ffffff;
+  --panel-2: #fbf9f5;
+  --border: #e3ddd1;
+  --text: #1e2b37;
+  --muted: #5a6672;
+  --primary: #1b6b87;
+  --primary-hover: #155870;
+  --primary-soft: rgba(27, 107, 135, 0.1);
+  --on-primary: #ffffff;
+  --user: #e2eef2;
+  --assistant: #ffffff;
+  --code-bg: #f3f0e9;
+  --lesson: var(--primary);
+  --lesson-soft: var(--primary-soft);
+  --concept: #2e7d5b;
+  --concept-soft: rgba(46, 125, 91, 0.1);
+  --code: #4f55c4;
+  --code-soft: rgba(79, 85, 196, 0.1);
+  --bug: #b4532a;
+  --bug-soft: rgba(180, 83, 42, 0.1);
+  --hint: #e3a13b;
+  --hint-text: #8a5a00;
+  --hint-soft: rgba(227, 161, 59, 0.16);
+  --rating-exceptional: #2e7d5b;
+  --rating-competent: #1b6b87;
+  --rating-not-ready: #9a5a06;
+  --error: #b42318;
+  --error-soft: rgba(180, 35, 24, 0.08);
+  --overlay: rgba(30, 43, 55, 0.45);
+  --shadow: rgba(30, 43, 55, 0.08);
 }
 
-@media (prefers-color-scheme: light) {
+@media (prefers-color-scheme: dark) {
+  /* The same scheme in deep, muted blue-slate rather than black. */
   :root {
-    color-scheme: light;
-    --bg: #f5f7fb;
-    --bg-deep: #eef2f8;
-    --panel: #ffffff;
-    --panel-2: #f8fafd;
-    --border: #d6deea;
-    --text: #172033;
-    --muted: #5b6b82;
-    --accent: #2f6fe4;
-    --accent-hover: #245dc6;
-    --accent-soft: rgba(47, 111, 228, 0.1);
-    --user: #dce9ff;
-    --assistant: #ffffff;
-    --code-bg: #f1f4f9;
-    --error: #c62828;
-    --not-ready: #b3261e;
-    --not-ready-bg: rgba(179, 38, 30, 0.1);
-    --competent: #8a5a00;
-    --competent-bg: rgba(214, 150, 0, 0.14);
-    --exceptional: #1b7a45;
-    --exceptional-bg: rgba(27, 122, 69, 0.12);
-    --none-bg: rgba(91, 107, 130, 0.1);
+    color-scheme: dark;
+    --bg: #12202a;
+    --bg-deep: #0e1a22;
+    --panel: #1a2b37;
+    --panel-2: #15242f;
+    --border: #2b404e;
+    --text: #e6eef2;
+    --muted: #9db0bd;
+    --primary: #5db3ce;
+    --primary-hover: #7ac3da;
+    --primary-soft: rgba(93, 179, 206, 0.14);
+    --on-primary: #0d1b22;
+    --user: #1f3b48;
+    --assistant: #1a2b37;
+    --code-bg: #0f1b23;
+    --concept: #6cc69c;
+    --concept-soft: rgba(108, 198, 156, 0.14);
+    --code: #a3a7f4;
+    --code-soft: rgba(163, 167, 244, 0.14);
+    --bug: #ee8c5f;
+    --bug-soft: rgba(238, 140, 95, 0.14);
+    --hint: #f2be63;
+    --hint-text: #f2be63;
+    --hint-soft: rgba(242, 190, 99, 0.14);
+    --rating-exceptional: #6cc69c;
+    --rating-competent: #5db3ce;
+    --rating-not-ready: #f2be63;
+    --error: #ff8a80;
+    --error-soft: rgba(255, 138, 128, 0.12);
+    --overlay: rgba(6, 12, 16, 0.78);
+    --shadow: rgba(0, 0, 0, 0.3);
   }
 }
 
@@ -63,7 +96,7 @@ body {
   height: 100%;
   overflow: hidden;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: linear-gradient(180deg, var(--bg-deep) 0%, var(--bg) 100%);
+  background: linear-gradient(180deg, var(--bg) 0%, var(--bg-deep) 100%);
   color: var(--text);
 }
 
@@ -71,6 +104,11 @@ textarea,
 button,
 select {
   font: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 
 .hidden {
@@ -120,13 +158,15 @@ select {
 }
 
 .brand-mark {
-  font-size: 2rem;
-  line-height: 1;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex-shrink: 0;
 }
 
 .brand h1 {
   margin: 0;
   font-size: 1.35rem;
+  color: var(--primary);
 }
 
 .tagline {
@@ -144,6 +184,7 @@ select {
   border: 1px solid var(--border);
   border-radius: 0.8rem;
   background: var(--panel);
+  box-shadow: 0 1px 2px var(--shadow);
 }
 
 .card p {
@@ -190,12 +231,12 @@ select {
 }
 
 .lesson-button:hover:not(:disabled) {
-  background: var(--accent-soft);
+  background: var(--lesson-soft);
 }
 
 .lesson-button.current {
-  border-color: var(--accent);
-  background: var(--accent-soft);
+  border-color: var(--lesson);
+  background: var(--lesson-soft);
   font-weight: 600;
 }
 
@@ -230,7 +271,7 @@ select {
 .message {
   padding: 0.85rem 1rem;
   border-radius: 0.7rem;
-  line-height: 1.55;
+  line-height: 1.6;
   overflow-wrap: break-word;
 }
 
@@ -244,11 +285,38 @@ select {
 .message.assistant {
   background: var(--assistant);
   border: 1px solid var(--border);
+  box-shadow: 0 1px 2px var(--shadow);
+}
+
+/* A reply's kind (lesson, concept question, ...) shows as a colored top edge, matching
+   the button that asked for it. */
+.message.assistant[data-kind] {
+  border-top: 3px solid var(--kind-color);
+}
+
+.message.assistant[data-kind="lesson"] {
+  --kind-color: var(--lesson);
+}
+
+.message.assistant[data-kind="concept"] {
+  --kind-color: var(--concept);
+}
+
+.message.assistant[data-kind="code"] {
+  --kind-color: var(--code);
+}
+
+.message.assistant[data-kind="bug"] {
+  --kind-color: var(--bug);
+}
+
+.message.assistant[data-kind="hint"] {
+  --kind-color: var(--hint);
 }
 
 .message.error {
-  background: var(--not-ready-bg);
-  border: 1px solid var(--not-ready);
+  background: var(--error-soft);
+  border: 1px solid var(--error);
   color: var(--error);
 }
 
@@ -265,7 +333,7 @@ select {
   width: 0.45rem;
   height: 0.45rem;
   border-radius: 50%;
-  background: var(--muted);
+  background: var(--primary);
   animation: typing 1.2s infinite ease-in-out;
 }
 
@@ -321,6 +389,7 @@ select {
 
 .markdown-body h1 {
   font-size: 1.3rem;
+  color: var(--primary);
 }
 
 .markdown-body h2 {
@@ -373,7 +442,7 @@ select {
 }
 
 .markdown-body a {
-  color: var(--accent);
+  color: var(--primary);
 }
 
 .markdown-body hr {
@@ -406,7 +475,47 @@ select {
 }
 
 .markdown-body th {
-  background: var(--accent-soft);
+  background: var(--primary-soft);
+}
+
+/* Feedback callouts: the rating in teal-blue, the interview advice in marigold. */
+.markdown-body p.callout {
+  margin: 0.6em 0;
+  padding: 0.55em 0.8em;
+  border-left: 3px solid var(--callout-color);
+  border-radius: 0 0.45rem 0.45rem 0;
+  background: var(--callout-soft);
+}
+
+.markdown-body p.callout-check {
+  --callout-color: var(--primary);
+  --callout-soft: var(--primary-soft);
+}
+
+.markdown-body p.callout-prep {
+  --callout-color: var(--hint);
+  --callout-soft: var(--hint-soft);
+}
+
+.markdown-body p.callout > strong:first-child {
+  color: var(--callout-color);
+}
+
+.markdown-body p.callout-prep > strong:first-child {
+  color: var(--hint-text);
+}
+
+.rating-exceptional {
+  color: var(--rating-exceptional);
+}
+
+.rating-competent {
+  color: var(--rating-competent);
+}
+
+/* Amber rather than red: Not Ready Yet is a step to work on, not an alarm. */
+.rating-not-ready {
+  color: var(--rating-not-ready);
 }
 
 /* ---------------------------------------------------------------- composer */
@@ -424,7 +533,13 @@ select {
   gap: 0.45rem;
 }
 
+/* Quick-action chips stay neutral; a small dot carries their kind's color. */
 .chip {
+  --chip-color: var(--primary);
+  --chip-soft: var(--primary-soft);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
   padding: 0.4rem 0.8rem;
   border-radius: 999px;
   border: 1px solid var(--border);
@@ -433,14 +548,49 @@ select {
   font-size: 0.88rem;
 }
 
+.chip::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--chip-color);
+  flex-shrink: 0;
+}
+
+.chip[data-kind="lesson"] {
+  --chip-color: var(--lesson);
+  --chip-soft: var(--lesson-soft);
+}
+
+.chip[data-kind="concept"] {
+  --chip-color: var(--concept);
+  --chip-soft: var(--concept-soft);
+}
+
+.chip[data-kind="code"] {
+  --chip-color: var(--code);
+  --chip-soft: var(--code-soft);
+}
+
+.chip[data-kind="bug"] {
+  --chip-color: var(--bug);
+  --chip-soft: var(--bug-soft);
+}
+
+.chip[data-kind="hint"] {
+  --chip-color: var(--hint);
+  --chip-soft: var(--hint-soft);
+}
+
 .chip:hover:not(:disabled) {
-  background: var(--accent-soft);
-  border-color: var(--accent);
+  background: var(--chip-soft);
+  border-color: var(--chip-color);
 }
 
 .chip.primary {
-  border-color: var(--accent);
-  background: var(--accent-soft);
+  border-color: var(--chip-color);
+  background: var(--chip-soft);
+  font-weight: 600;
 }
 
 .composer {
@@ -466,8 +616,8 @@ textarea {
 
 textarea:focus,
 select:focus {
-  outline: 2px solid var(--accent-soft);
-  border-color: var(--accent);
+  outline: 2px solid var(--primary-soft);
+  border-color: var(--primary);
 }
 
 textarea:disabled {
@@ -493,12 +643,12 @@ button {
   border-radius: 0.5rem;
   padding: 0.55rem 1.1rem;
   cursor: pointer;
-  background: var(--accent);
-  color: white;
+  background: var(--primary);
+  color: var(--on-primary);
 }
 
 button:hover:not(:disabled) {
-  background: var(--accent-hover);
+  background: var(--primary-hover);
 }
 
 button:disabled {
@@ -508,12 +658,12 @@ button:disabled {
 
 button.ghost {
   background: transparent;
-  color: var(--accent);
+  color: var(--primary);
   border: 1px solid var(--border);
 }
 
 button.ghost:hover:not(:disabled) {
-  background: var(--accent-soft);
+  background: var(--primary-soft);
 }
 
 button.small {
@@ -531,7 +681,7 @@ button.link {
 
 button.link:hover:not(:disabled) {
   background: none;
-  color: var(--accent);
+  color: var(--primary);
 }
 
 /* ---------------------------------------------------------------- auth */
@@ -543,7 +693,7 @@ button.link:hover:not(:disabled) {
   align-items: center;
   justify-content: center;
   padding: 1.5rem;
-  background: rgba(8, 12, 18, 0.82);
+  background: var(--overlay);
   backdrop-filter: blur(4px);
   z-index: 20;
 }
@@ -557,6 +707,18 @@ button.link:hover:not(:disabled) {
   border-radius: 0.85rem;
   border: 1px solid var(--border);
   background: var(--panel);
+  box-shadow: 0 10px 30px var(--shadow);
+}
+
+.auth-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.auth-brand img {
+  width: 2.5rem;
+  height: 2.5rem;
 }
 
 .auth-login-form {
@@ -601,8 +763,17 @@ button.link:hover:not(:disabled) {
   }
 
   .mobile-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
     font-weight: 700;
     font-size: 1.1rem;
+    color: var(--primary);
+  }
+
+  .mobile-brand img {
+    width: 1.9rem;
+    height: 1.9rem;
   }
 
   .sidebar {
@@ -612,7 +783,7 @@ button.link:hover:not(:disabled) {
     padding: 1rem;
     background: var(--bg);
     border-right: 1px solid var(--border);
-    box-shadow: 0 0 40px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 0 40px var(--shadow);
     transform: translateX(-105%);
     transition: transform 0.2s ease;
     z-index: 10;

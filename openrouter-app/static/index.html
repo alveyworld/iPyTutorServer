@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>iPyTutor</title>
+  <link rel="icon" href="/parrot.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -13,7 +14,10 @@
         <h2 id="auth-logging-in-title">Logging you in</h2>
       </div>
       <form id="auth-form" class="auth-login-form">
-        <h2>Enter public key</h2>
+        <div class="auth-brand">
+          <img src="/parrot.svg" alt="">
+          <h2>Enter public key</h2>
+        </div>
         <p class="auth-copy">Paste the public key you received from your instructor.</p>
         <textarea
           id="public-key-input"
@@ -29,7 +33,7 @@
   <div id="app" class="layout app-locked">
     <aside id="sidebar" class="sidebar" aria-label="Weeks and lessons">
       <div class="brand">
-        <span class="brand-mark" aria-hidden="true">🐍</span>
+        <img class="brand-mark" src="/parrot.svg" alt="" title="Norwegian Blue. Beautiful plumage.">
         <div>
           <h1>iPyTutor</h1>
           <p class="tagline">Python practice for your iPyIntervu interviews</p>
@@ -56,7 +60,7 @@
 
     <main class="chat">
       <header class="chat-header">
-        <span class="mobile-brand"><span aria-hidden="true">🐍</span> iPyTutor</span>
+        <span class="mobile-brand"><img src="/parrot.svg" alt=""> iPyTutor</span>
         <button type="button" id="toggle-sidebar" class="ghost small" aria-controls="sidebar" aria-expanded="false">Weeks &amp; lessons</button>
       </header>
 

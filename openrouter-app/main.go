@@ -62,6 +62,7 @@ func main() {
 	mux.Handle("GET /app.js", contentHandler(static, "app.js", "application/javascript"))
 	mux.Handle("GET /marked.min.js", contentHandler(static, "marked.min.js", "application/javascript"))
 	mux.Handle("GET /dompurify.min.js", contentHandler(static, "dompurify.min.js", "application/javascript"))
+	mux.Handle("GET /parrot.svg", contentHandler(static, "parrot.svg", "image/svg+xml"))
 
 	server := &http.Server{
 		Addr:        addr,

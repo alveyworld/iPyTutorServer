@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="iPyTutor parrot">
+  <title>Norwegian Blue. Beautiful plumage.</title>
+  <!-- tail, behind the perch -->
+  <path d="M27 44 C23 51 18 57 12 62 C19 61 25 56 30 48 Z" fill="#E0533A"/>
+  <path d="M30 46 C28 53 25 58 21 63 C27 61 31 56 34 49 Z" fill="#2563A8"/>
+  <!-- body -->
+  <path d="M40 22 C48 26 49 36 44 43 C40 48 34 51 28 49 C24 47 24 41 26 35 C28 28 33 21 40 22 Z" fill="#2F80C8"/>
+  <!-- chest -->
+  <path d="M45 30 C48 36 46 43 41 47 C37 49 34 48 34 46 C38 42 41 36 45 30 Z" fill="#F4B93F"/>
+  <!-- wing -->
+  <path d="M33 27 C39 27 41 34 38 41 C36 46 31 50 25 53 C25 46 26 39 28 33 C29 29 31 27 33 27 Z" fill="#3BA672"/>
+  <path d="M27 41 C30 41 33 39 36 37 M26 46 C29 46 32 44 35 42" stroke="#2B7F55" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+  <!-- head and crest -->
+  <circle cx="41" cy="18" r="10" fill="#3B93DB"/>
+  <path d="M35 10 C35 5 39 3 43 4 C40 6 39 8 39 10 Z" fill="#EE6A3C"/>
+  <path d="M39 9 C40 5 44 4 47 6 C44 7 43 9 42.5 10.5 Z" fill="#F4B93F"/>
+  <!-- face and eye -->
+  <ellipse cx="44.8" cy="17.8" rx="4.3" ry="4" fill="#FFFFFF"/>
+  <circle cx="45.2" cy="17.3" r="1.9" fill="#1E2B37"/>
+  <circle cx="45.8" cy="16.7" r="0.65" fill="#FFFFFF"/>
+  <!-- beak -->
+  <path d="M48.5 13.5 C53.5 13 57 16.5 56 22 C55.6 24.2 54 25 53 23.6 C53.4 20.4 52 18.3 49 18.6 Z" fill="#2D3138"/>
+  <path d="M49 19.6 C51.5 19.6 53 21 52.6 23 C51 24 49 23.6 48 22.2 Z" fill="#555B64"/>
+  <!-- perch and feet -->
+  <rect x="20" y="51" width="32" height="4" rx="2" fill="#9C7A55"/>
+  <ellipse cx="33.5" cy="51.4" rx="2.1" ry="1.5" fill="#7A848E"/>
+  <ellipse cx="38.5" cy="51.1" rx="2.1" ry="1.5" fill="#7A848E"/>
+</svg>

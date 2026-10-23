@@ -379,23 +379,23 @@ function renderActions() {
     const activity = state.activity;
     const practicing = activity && activity.kind !== "lesson";
     if (practicing && activity.open) {
-      buttons.push({ label: "💡 Hint", action: "hint", primary: true });
-      buttons.push({ label: "✅ Show solution", action: "solution" });
+      buttons.push({ label: "💡 Hint", action: "hint", primary: true, kind: "hint" });
+      buttons.push({ label: "✅ Show solution", action: "solution", kind: activity.kind });
     } else if (practicing) {
-      buttons.push({ label: "🔁 Another one", action: "another", primary: true });
-      buttons.push({ label: "⬆️ Harder one", action: "another:harder", text: "A harder one" });
+      buttons.push({ label: "🔁 Another one", action: "another", primary: true, kind: activity.kind });
+      buttons.push({ label: "⬆️ Harder one", action: "another:harder", text: "A harder one", kind: activity.kind });
     }
     const lessonCount = state.week.lessons?.length || 0;
     if (activity?.kind === "lesson") {
       if (activity.lesson < lessonCount) {
-        buttons.push({ label: "➡️ Next lesson", action: "next_lesson", primary: true });
+        buttons.push({ label: "➡️ Next lesson", action: "next_lesson", primary: true, kind: "lesson" });
       }
     } else {
-      buttons.push({ label: "📖 Teach me", action: "lesson", primary: !activity });
+      buttons.push({ label: "📖 Teach me", action: "lesson", primary: !activity, kind: "lesson" });
     }
     for (const kind of state.week.practiceKinds || []) {
       const emoji = { concept: "💬", code: "🧩", bug: "🐞" }[kind.kind] || "📝";
-      buttons.push({ label: `${emoji} ${kind.label}`, action: `practice:${kind.kind}` });
+      buttons.push({ label: `${emoji} ${kind.label}`, action: `practice:${kind.kind}`, kind: kind.kind });
     }
     buttons.push({ label: "🎯 Interview guide", action: "guide" });
   }
@@ -403,6 +403,9 @@ function renderActions() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = spec.primary ? "chip primary" : "chip";
+    if (spec.kind) {
+      button.dataset.kind = spec.kind;
+    }
     button.textContent = spec.label;
     button.disabled = !isAuthenticated || chatInFlight;
     button.addEventListener("click", () => {
@@ -436,6 +439,51 @@ function renderMarkdown(content) {
     return div.innerHTML;
   }
   return DOMPurify.sanitize(marked.parse(content), { USE_PROFILES: { html: true } });
+}
+
+// messageKind names the activity a reply belongs to, from how the server starts it, so it
+// can carry the same color as the button that asked for it.
+function messageKind(content) {
+  const text = content.replace(/^\*📚[^\n]*\n+/, "");
+  if (/^### 💬/.test(text)) return "concept";
+  if (/^### 🧩/.test(text)) return "code";
+  if (/^### 🐞/.test(text)) return "bug";
+  if (text.startsWith("💡")) return "hint";
+  if (/\n\*Lesson \d+ of \d+/.test(text)) return "lesson";
+  return "";
+}
+
+// separateCallouts puts each feedback callout line in its own paragraph; the model often
+// writes "Interview check" and "Interview prep" on consecutive lines.
+function separateCallouts(content) {
+  return content.replace(/\n(?=[ \t]*\*\*Interview (?:check|prep):\*\*)/g, "\n\n");
+}
+
+const CALLOUTS = { "Interview check:": "callout-check", "Interview prep:": "callout-prep" };
+const RATINGS = { Exceptional: "rating-exceptional", Competent: "rating-competent", "Not Ready Yet": "rating-not-ready" };
+
+// decorateFeedback styles the "Interview check" and "Interview prep" paragraphs as
+// callouts, and colors the rating word in the check.
+function decorateFeedback(container) {
+  for (const p of container.querySelectorAll("p")) {
+    const lead = p.firstElementChild;
+    if (!lead || lead.tagName !== "STRONG" || !p.textContent.trimStart().startsWith(lead.textContent)) {
+      continue;
+    }
+    const callout = CALLOUTS[lead.textContent.trim()];
+    if (!callout) {
+      continue;
+    }
+    p.classList.add("callout", callout);
+    if (callout === "callout-check") {
+      for (const strong of p.querySelectorAll("strong")) {
+        const rating = RATINGS[strong.textContent.trim().replace(/[.:,]$/, "")];
+        if (rating) {
+          strong.classList.add(rating);
+        }
+      }
+    }
+  }
 }
 
 function addCopyButtons(container) {
@@ -472,8 +520,13 @@ function renderMessages() {
       } else {
         const body = document.createElement("div");
         body.className = "markdown-body";
-        body.innerHTML = renderMarkdown(message.content);
+        body.innerHTML = renderMarkdown(separateCallouts(message.content));
+        decorateFeedback(body);
         addCopyButtons(body);
+        const kind = messageKind(message.content);
+        if (kind) {
+          item.dataset.kind = kind;
+        }
         item.appendChild(body);
       }
     } else {
