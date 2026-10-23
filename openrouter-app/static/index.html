@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>iPyTutor</title>
-  <link rel="icon" href="/parrot.svg" type="image/svg+xml">
+  <link rel="icon" href="parrot.svg" type="image/svg+xml">
   <script>
     // Choose the theme before the page draws, so it never flashes the wrong one: the
     // student's saved choice, else the device setting. app.js keeps it up to date.
@@ -17,7 +17,7 @@
       document.documentElement.dataset.theme = dark ? "dark" : "light";
     })();
   </script>
-  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div id="auth-gate" class="auth-gate hidden" aria-hidden="true">
@@ -27,7 +27,7 @@
       </div>
       <form id="auth-form" class="auth-login-form">
         <div class="auth-brand">
-          <img src="/parrot.svg" alt="">
+          <img src="parrot.svg" alt="">
           <h2>Enter public key</h2>
         </div>
         <p class="auth-copy">Paste the public key you received from your instructor.</p>
@@ -45,7 +45,7 @@
   <div id="app" class="layout app-locked">
     <aside id="sidebar" class="sidebar" aria-label="Weeks and lessons">
       <div class="brand">
-        <img class="brand-mark" src="/parrot.svg" alt="" title="Norwegian Blue. Beautiful plumage.">
+        <img class="brand-mark" src="parrot.svg" alt="" title="Norwegian Blue. Beautiful plumage.">
         <div>
           <h1>iPyTutor</h1>
           <p class="tagline">Python practice for your iPyIntervu interviews</p>
@@ -73,7 +73,7 @@
 
     <main class="chat">
       <header class="chat-header">
-        <span class="mobile-brand"><img src="/parrot.svg" alt=""> iPyTutor</span>
+        <span class="mobile-brand"><img src="parrot.svg" alt=""> iPyTutor</span>
         <div class="chat-header-actions">
           <button type="button" class="theme-toggle ghost" aria-label="Switch to dark mode" title="Switch to dark mode">🌙</button>
           <button type="button" id="toggle-sidebar" class="ghost small" aria-controls="sidebar" aria-expanded="false">Weeks &amp; lessons</button>
@@ -100,8 +100,8 @@
     </main>
   </div>
 
-  <script src="/marked.min.js"></script>
-  <script src="/dompurify.min.js"></script>
-  <script src="/app.js"></script>
+  <script src="marked.min.js"></script>
+  <script src="dompurify.min.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>

@@ -44,4 +44,5 @@ systemctl --no-pager status ipytutor
 
 echo "iPyTutor is running on 127.0.0.1:8090"
 echo "Health check: curl http://127.0.0.1:8090/healthz"
-echo "For HTTPS: sudo $SCRIPT_DIR/setup-https.sh <your-domain> [email]"
+echo "For HTTPS on its own domain: sudo $SCRIPT_DIR/setup-https.sh <your-domain> [email]"
+echo "Or at a path on a site nginx already serves: sudo $SCRIPT_DIR/add-tutor-path.sh <domain> [/tutor]"

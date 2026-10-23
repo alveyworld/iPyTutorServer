@@ -127,11 +127,14 @@ sudo ./deploy/install.sh
 curl http://127.0.0.1:8090/healthz
 ```
 
-**4. Enable HTTPS** (needed for the browser's login encryption). Point a domain or subdomain, such as `tutor.aalang.org`, at the server first:
+**4. Make it reachable over HTTPS** (needed for the browser's login encryption). Choose one:
 
-```bash
-sudo ./deploy/setup-https.sh tutor.aalang.org admin@aalang.org
-```
+- **At a path on a site the server already serves**, such as `https://intebg.org/tutor/` next to the interview app: see [Serving it at a path on an existing site](#serving-it-at-a-path-on-an-existing-site) below.
+- **At its own domain or subdomain**, such as `tutor.intebg.org`. Point the name at the server first, then:
+
+  ```bash
+  sudo ./deploy/setup-https.sh tutor.intebg.org admin@intebg.org
+  ```
 
 **Updating** after `git pull`:
 
@@ -145,6 +148,26 @@ sudo ./deploy/setup-https.sh tutor.aalang.org admin@aalang.org
 
 The tutor stores nothing on disk, so there's no student data to back up. Conversations live in the server's memory, so run one server (or use sticky sessions behind a load balancer).
 
+### Serving it at a path on an existing site
+
+To put the tutor at `https://intebg.org/tutor/` on the droplet that already runs the interview app at `https://intebg.org/`, do steps 1–3 above, then:
+
+```bash
+sudo ./deploy/add-tutor-path.sh intebg.org
+```
+
+The script:
+1. installs [`deploy/nginx-tutor-location.conf`](openrouter-app/deploy/nginx-tutor-location.conf) as `/etc/nginx/snippets/ipytutor-tutor.conf`. It forwards `/tutor/...` to the tutor on `127.0.0.1:8090` with the `/tutor` part removed, redirects `/tutor` to `/tutor/`, and allows long-running turns;
+2. finds intebg.org's HTTPS server block (the one certbot set up) and adds one line to it, `include snippets/ipytutor-tutor.conf;`, after saving a backup of that file next to it (`<file>.bak.<time>`);
+3. checks the whole nginx config with `nginx -t`, and puts the old file back if the check fails;
+4. reloads nginx and checks that `https://intebg.org/tutor/healthz` answers.
+
+Running it again is safe; pass a second argument for another path, such as `/study`. If the script can't find exactly one HTTPS block for the domain, it changes nothing in the site's config and prints the one line to add by hand.
+
+The interview app's own routes are untouched: nginx sends a request to the longest matching location, so `/tutor/...` goes to the tutor and everything else to the interview app. The two apps keep separate login cookies and browser storage, so logging in to one doesn't affect the other. If both use the same login key (step 1), students paste the same public key into each the first time.
+
+The page asks for its files and API with relative paths (`app.js`, `api/chat`), which is what lets it work under a path; `go test` fails if an absolute path creeps back in. To undo, remove the `include` line from the site's config, then run `sudo nginx -t && sudo systemctl reload nginx`.
+
 ### Deploy scripts
 
 | Script | When to run | Requires root |
@@ -152,7 +175,8 @@ The tutor stores nothing on disk, so there's no student data to back up. Convers
 | `deploy/build.sh` | Compile the Linux binary only | No |
 | `deploy/install-secrets.sh` | First-time secret setup | Yes |
 | `deploy/install.sh` | First-time app and systemd install | Yes |
-| `deploy/setup-https.sh` | First-time nginx and HTTPS setup | Yes |
+| `deploy/setup-https.sh` | First-time nginx and HTTPS setup, for the tutor's own domain | Yes |
+| `deploy/add-tutor-path.sh` | Serve the tutor at a path, such as `/tutor`, on a site nginx already serves | Yes |
 | `deploy/redeploy.sh` | Code or content updates | Partly (`sudo` to install and restart) |
 | `deploy/staging.sh` | Try changes next to production | Partly |
 | `deploy/cycle_keys.sh` | Rotate the login keypair | Yes |

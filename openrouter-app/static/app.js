@@ -242,14 +242,14 @@ async function encryptChallenge(publicKeyPem, nonceBase64) {
 }
 
 async function authenticate(publicKeyPem) {
-  const challengeResponse = await fetch("/api/auth/challenge", { credentials: "include" });
+  const challengeResponse = await fetch("api/auth/challenge", { credentials: "include" });
   if (!challengeResponse.ok) {
     throw new Error("Failed to get authentication challenge.");
   }
   const { challenge_id: challengeID, nonce } = await challengeResponse.json();
   const ciphertext = await encryptChallenge(publicKeyPem, nonce);
 
-  const verifyResponse = await fetch("/api/auth/verify", {
+  const verifyResponse = await fetch("api/auth/verify", {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
@@ -299,7 +299,7 @@ function handleUnauthorized() {
 // ---------------------------------------------------------------- tutor state
 
 async function bootstrapSession() {
-  const response = await fetch("/api/session/bootstrap", {
+  const response = await fetch("api/session/bootstrap", {
     method: "POST",
     credentials: "include",
     headers: sessionHeaders({ "Content-Type": "application/json" }),
@@ -580,7 +580,7 @@ async function postChatTurn(turnId, action) {
     controller.abort(new DOMException("Request timed out", "TimeoutError"));
   }, CHAT_READ_TIMEOUT_MS);
   try {
-    const response = await fetch("/api/chat", {
+    const response = await fetch("api/chat", {
       method: "POST",
       credentials: "include",
       signal: controller.signal,
