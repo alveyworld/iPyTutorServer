@@ -54,7 +54,7 @@ func (f *fakeOpenRouter) reply(task string) (string, string) {
 		}
 		return "problem_concept", "TITLE: Field sample labels\nPROBLEM:\nA field team labels samples. What does `x // 2` give when x is 7, and why?\nREFERENCE:\n3, because // drops the remainder."
 	case strings.Contains(task, "Teach lesson"):
-		return "lesson", "## A lesson\n\nSome teaching.\n\n### Quick check\nWhat does `==` do?"
+		return "lesson", "Do NOT say \"Lesson 1 of 5\". Write only the lesson itself.\n<reply>\n## A lesson\n\nSome teaching.\n\n### Quick check\nWhat does `==` do?\n</reply>"
 	case strings.Contains(task, "asked for a hint"):
 		return "hint", "Think about which branch Python checks first."
 	case strings.Contains(task, "asked to see the solution"):
@@ -64,7 +64,7 @@ func (f *fakeOpenRouter) reply(task string) (string, string) {
 		if level == "" {
 			level = "competent"
 		}
-		return "feedback", "You named the input clearly.\n\n**Interview check:** this would likely be rated **Competent**.\n**Interview prep:** say why the threshold check comes first.\n\nNow paste your code.\nLEVEL: " + level
+		return "feedback", "Plan: praise the input, then the missing reason.\n<reply>\nYou named the input clearly.\n\n**Interview check:** this would likely be rated **Competent**.\n**Interview prep:** say why the threshold check comes first.\n\nNow paste your code.\n</reply>\nLEVEL: " + level
 	case strings.Contains(task, "quick check question"):
 		return "lesson_reply", "Yes, that's right.\n**Interview prep:** mention the boundary case."
 	}
@@ -196,6 +196,9 @@ func TestStudyAnyWeekAndLesson(t *testing.T) {
 	// Straight to a lesson in the middle of a week, with no major and no earlier lessons.
 	reply, state := h.send("week 6 lesson 2", "")
 	mustContain(t, "week 6 lesson 2", reply, "Now studying **Week 6 - for Loops", "## A lesson", "Lesson 2 of 5")
+	if strings.Contains(reply, "Do NOT") || strings.Contains(reply, "<reply>") {
+		t.Fatalf("the model's notes or tags reached the student:\n%s", reply)
+	}
 	if state.Week == nil || state.Week.Number != 6 || len(state.Week.Lessons) != 5 || state.Activity == nil || state.Activity.Lesson != 2 {
 		t.Fatalf("state = %+v", state)
 	}
@@ -203,7 +206,8 @@ func TestStudyAnyWeekAndLesson(t *testing.T) {
 	mustContain(t, "lesson prompt", lessonPrompt,
 		"already knows everything from the earlier weeks (week 1: problem decomposition",
 		"week 5: if statements", "This week they are learning: for loops",
-		"may not have done this week's earlier lessons (Repeating with for and range())")
+		"may not have done this week's earlier lessons (Repeating with for and range())",
+		"HOW TO SEND YOUR REPLY")
 
 	reply, state = h.send("Lesson 4: Decisions inside a loop", "lesson:4")
 	mustContain(t, "lesson 4", reply, "Lesson 4 of 5")
@@ -319,6 +323,12 @@ func TestCodeProblemStepsWithInterviewAdvice(t *testing.T) {
 	}
 	reply, state = h.send("Input: the sprouted count. Process: compare it with 20. Output: ready or wait.", "")
 	mustContain(t, "feedback", reply, "**Interview check:**", "**Interview prep:**")
+	if strings.Contains(reply, "Plan:") || strings.Contains(reply, "</reply>") {
+		t.Fatalf("the model's notes or tags reached the student:\n%s", reply)
+	}
+	if strings.Contains(fake.prompt("problem_code"), "HOW TO SEND YOUR REPLY") {
+		t.Fatal("problem prompts have their own format and must not ask for reply tags")
+	}
 	if strings.Contains(reply, "LEVEL:") || state.Activity.Stage != stageCode {
 		t.Fatalf("stage %s after decomposition, reply:\n%s", state.Activity.Stage, reply)
 	}

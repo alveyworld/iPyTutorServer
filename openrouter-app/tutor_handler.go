@@ -459,7 +459,7 @@ func (t *tutor) teachLesson(tc *turnContext, w *weekContent, i int, asked bool) 
 	base := tutorBasePrompt(w, sess.Major)
 	res, err := t.llm.call(context.Background(), callLesson, lessonMessages(base, w, i, sess.Major))
 	logCall(tc.sessionID, callLesson, res, err)
-	content := strings.TrimSpace(res.Content)
+	content := cleanReply(tc.sessionID, callLesson, res.Content)
 	if err != nil || content == "" {
 		content = lessonOutline(w, i)
 	}
@@ -478,7 +478,7 @@ func (t *tutor) lessonReply(tc *turnContext, w *weekContent) string {
 	a.addMessage("user", tc.msg)
 	res, err := t.llm.call(context.Background(), callChat, lessonReplyMessages(tutorBasePrompt(w, tc.sess.Major), a))
 	logCall(tc.sessionID, callChat, res, err)
-	reply := strings.TrimSpace(res.Content)
+	reply := cleanReply(tc.sessionID, callChat, res.Content)
 	if err != nil || reply == "" {
 		a.Messages = a.Messages[:len(a.Messages)-1]
 		return t.say(tc.sess, tc.msg, tutorUnavailableMessage)
@@ -496,7 +496,7 @@ func (t *tutor) chat(tc *turnContext, w *weekContent) string {
 	history := append(append([]chatMessage(nil), sess.History...), chatMessage{Role: "user", Content: tc.msg})
 	res, err := t.llm.call(context.Background(), callChat, chatMessages(tutorBasePrompt(w, sess.Major), history, done))
 	logCall(tc.sessionID, callChat, res, err)
-	reply := strings.TrimSpace(res.Content)
+	reply := cleanReply(tc.sessionID, callChat, res.Content)
 	if err != nil || reply == "" {
 		return t.say(sess, tc.msg, tutorUnavailableMessage)
 	}
@@ -590,6 +590,7 @@ func (t *tutor) practiceReply(tc *turnContext, w *weekContent) string {
 	res, err := t.llm.call(context.Background(), callFeedback, feedbackMessages(tutorBasePrompt(w, sess.Major), w, a, codePasted))
 	logCall(tc.sessionID, callFeedback, res, err)
 	reply, level := splitLevel(res.Content)
+	reply = cleanReply(tc.sessionID, callFeedback, reply)
 	if err != nil || reply == "" {
 		a.Messages = a.Messages[:len(a.Messages)-1]
 		return t.say(sess, tc.msg, tutorUnavailableMessage)
@@ -613,7 +614,7 @@ func (t *tutor) giveHint(tc *turnContext, w *weekContent) string {
 	a := sess.Activity
 	res, err := t.llm.call(context.Background(), callHint, hintMessages(tutorBasePrompt(w, sess.Major), w, a))
 	logCall(tc.sessionID, callHint, res, err)
-	reply := strings.TrimSpace(res.Content)
+	reply := cleanReply(tc.sessionID, callHint, res.Content)
 	if err != nil || reply == "" {
 		return t.say(sess, tc.msg, tutorUnavailableMessage)
 	}
@@ -628,7 +629,7 @@ func (t *tutor) showSolution(tc *turnContext, w *weekContent) string {
 	a := sess.Activity
 	res, err := t.llm.call(context.Background(), callSolution, solutionMessages(tutorBasePrompt(w, sess.Major), w, a))
 	logCall(tc.sessionID, callSolution, res, err)
-	reply := strings.TrimSpace(res.Content)
+	reply := cleanReply(tc.sessionID, callSolution, res.Content)
 	if err != nil || reply == "" {
 		return t.say(sess, tc.msg, tutorUnavailableMessage)
 	}

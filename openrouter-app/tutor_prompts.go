@@ -77,6 +77,19 @@ func systemMessages(base, task string) []chatMessage {
 	return []chatMessage{{Role: "system", Content: base + "\n\nYOUR TASK\n" + task}}
 }
 
+// replyFormat asks for the student-facing text inside <reply> tags. With reasoning off the
+// model sometimes plans out loud ("Do NOT say 'Lesson 1 of 5'..."); notes outside the tags
+// are dropped (studentReply), and allowing a few before them keeps them out of the reply.
+const replyFormat = `
+
+HOW TO SEND YOUR REPLY
+Put the text the student will see between <reply> and </reply>, each tag on its own line. Only what is inside the tags is shown to the student. If you want to plan first, keep it brief and put it before <reply>. Never put notes to yourself, plans, or reminders of these instructions inside the tags.`
+
+// replyMessages builds a call whose reply is shown to the student.
+func replyMessages(base, task string) []chatMessage {
+	return systemMessages(base, task+replyFormat)
+}
+
 // lessonMessages asks for one lesson of the week's plan.
 func lessonMessages(base string, w *weekContent, index int, major string) []chatMessage {
 	l := w.Lessons[index]
@@ -107,8 +120,8 @@ func lessonMessages(base string, w *weekContent, index int, major string) []chat
 	b.WriteString("### Common mistake\nOne mistake students often make with this, shown briefly, and how to avoid it.\n")
 	b.WriteString("### In the interview\nOne or two sentences on how this shows up in the interview and what a strong answer includes.\n")
 	b.WriteString("### Quick check\nOne short question about this lesson for the student to answer. Don't answer it.\n")
-	b.WriteString("\nKeep the whole lesson under about 400 words, plus any code. Start directly with the heading.")
-	return systemMessages(base, b.String())
+	b.WriteString("\nKeep the whole lesson under about 400 words, plus any code. Start the reply directly with the heading.")
+	return replyMessages(base, b.String())
 }
 
 func majorOrEveryday(major string) string {
@@ -124,7 +137,7 @@ func lessonReplyMessages(base string, a *activity) []chatMessage {
 		"- If they answered the quick check, evaluate it: say whether it's right and why, and correct any misunderstanding kindly. Then add one line starting \"**Interview prep:**\" with a concrete tip for how this idea comes up in the interview and how to answer it well (the reason to give, the edge case to mention, the wording that shows understanding).\n"+
 		"- If they asked a question, answer it with a small example.\n"+
 		"Keep it under 220 words. End by suggesting they ask another question, choose **Next lesson**, or try a practice problem.", a.Title)
-	return append(systemMessages(base, task), a.Messages...)
+	return append(replyMessages(base, task), a.Messages...)
 }
 
 // chatMessages answers a free question outside any activity. done is the activity the
@@ -142,7 +155,7 @@ func chatMessages(base string, history []chatMessage, done *activity) []chatMess
 	if done != nil && done.isPractice() {
 		fmt.Fprintf(&b, "\n\nThe student recently finished this practice problem, so they may be asking about it:\n<problem>\n%s\n</problem>\n<answer_key>\n%s\n</answer_key>", done.Problem, done.Reference)
 	}
-	return append(systemMessages(base, b.String()), history...)
+	return append(replyMessages(base, b.String()), history...)
 }
 
 func difficultyText(difficulty string) string {
@@ -274,8 +287,8 @@ How to reply:
 - End with the next step described above.
 - Keep it under about 280 words, plus any code.
 If the student didn't attempt an answer (they asked a question, said they're stuck, or wrote something off-topic), help them without giving the answer away, skip the Interview check and Interview prep lines, and invite them to try.
-After everything else, on its own last line, write exactly one of: LEVEL: not_ready, LEVEL: competent, LEVEL: exceptional, or LEVEL: none (none when there was no attempt to rate). The student never sees this line, and it must match your Interview check.`)
-	return append(systemMessages(base, b.String()), a.Messages...)
+After </reply>, on its own line, write exactly one of: LEVEL: not_ready, LEVEL: competent, LEVEL: exceptional, or LEVEL: none (none when there was no attempt to rate). The student never sees this line, and it must match your Interview check.`)
+	return append(replyMessages(base, b.String()), a.Messages...)
 }
 
 func hintMessages(base string, w *weekContent, a *activity) []chatMessage {
@@ -286,7 +299,7 @@ func hintMessages(base string, w *weekContent, a *activity) []chatMessage {
 - Hint 2: more specific: name the step, value or construct they need, but not the full answer.
 - Hint 3 or later: walk through the approach step by step; a partial snippet is fine, but leave the last step for them.
 Keep it under 120 words, don't give the full answer, and end by inviting them to try.`)
-	return append(systemMessages(base, b.String()), a.Messages...)
+	return append(replyMessages(base, b.String()), a.Messages...)
 }
 
 func stageSummary(a *activity) string {
@@ -322,5 +335,5 @@ func solutionMessages(base string, w *weekContent, a *activity) []chatMessage {
 		b.WriteString("- A step-by-step way to track the bug down, where it is, why it causes the symptom, and the fixed line.\n")
 	}
 	b.WriteString("Then add one line starting \"**Interview prep:**\" with what to remember for a problem like this in the interview. Encourage them, and suggest trying **Another one** without the solution to lock it in. Keep it under about 380 words, plus code.")
-	return append(systemMessages(base, b.String()), a.Messages...)
+	return append(replyMessages(base, b.String()), a.Messages...)
 }

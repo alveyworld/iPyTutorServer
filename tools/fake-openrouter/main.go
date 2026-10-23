@@ -93,7 +93,8 @@ func reply(system, week string, msgs []message) (string, string) {
 		if m := regexp.MustCompile(`Teach lesson \d+ of \d+ for this week: "([^"]+)"`).FindStringSubmatch(system); m != nil {
 			title = m[1]
 		}
-		return "lesson", fmt.Sprintf(lessonTemplate, title, week)
+		// Like the real model with reasoning off, it plans before the tagged reply.
+		return "lesson", "Do NOT say \"Lesson 1 of 5\" or mention the lesson structure. Write only the lesson itself.\n<reply>\n" + fmt.Sprintf(lessonTemplate, title, week) + "\n</reply>"
 	case strings.Contains(system, "asked for a hint"):
 		return "hint", "Look closely at the order of the checks. Python runs only the **first** branch whose condition is True. Which condition does a score of 95 meet first? Try tracing it, then tell me what you find."
 	case strings.Contains(system, "asked to see the solution"):
@@ -102,7 +103,7 @@ func reply(system, week string, msgs []message) (string, string) {
 		if strings.HasSuffix(strings.TrimSpace(last), "?") {
 			return "feedback/question", "Good question! `elif` means \"else if\": Python only checks it when every condition above it was False. Have a go at the problem with that in mind, and I'll give you feedback.\nLEVEL: none"
 		}
-		return "feedback", feedback
+		return "feedback", "Plan: praise the input, then the missing reason.\n<reply>\n" + feedback
 	case strings.Contains(system, "quick check question"):
 		return "lesson_reply", "Yes, that's right! 🎉 `==` compares two values and gives `True` or `False`, while a single `=` stores a value in a variable. Mixing them up is one of the most common mistakes, so it's great that you've got it.\n\n**Interview prep:** if an interviewer shows you a condition, say out loud whether it compares or assigns, and what it evaluates to for a sample value.\n\nAsk me anything about this lesson, choose **Next lesson**, or try a practice problem."
 	}
@@ -212,6 +213,7 @@ One thing to tighten: say *how* the processing decides between outcomes. Which v
 **Interview prep:** practice saying your breakdown out loud in one breath: input, then each decision in order, then the output, naming exactly 30 and 60 as the boundaries you'd test.
 
 Next, write the Python for this and paste it here. You can use AI to help, but be ready to explain every line.
+</reply>
 LEVEL: competent`
 
 const solution = `Here's a worked solution.
