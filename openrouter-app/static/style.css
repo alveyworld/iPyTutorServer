@@ -9,6 +9,10 @@
  *   lessons teal-blue, concept questions green, code problems indigo, bug hunts orange,
  *   hints and interview advice marigold;
  * - high-contrast text: every text color passes WCAG AA (4.5:1) on its background.
+ *
+ * The theme is chosen by <html data-theme>: a script in index.html sets it before the page
+ * draws, from the student's saved choice or else the device setting, and the toggle
+ * button switches it.
  */
 :root {
   color-scheme: light;
@@ -46,41 +50,39 @@
   --shadow: rgba(30, 43, 55, 0.08);
 }
 
-@media (prefers-color-scheme: dark) {
-  /* The same scheme in deep, muted blue-slate rather than black. */
-  :root {
-    color-scheme: dark;
-    --bg: #12202a;
-    --bg-deep: #0e1a22;
-    --panel: #1a2b37;
-    --panel-2: #15242f;
-    --border: #2b404e;
-    --text: #e6eef2;
-    --muted: #9db0bd;
-    --primary: #5db3ce;
-    --primary-hover: #7ac3da;
-    --primary-soft: rgba(93, 179, 206, 0.14);
-    --on-primary: #0d1b22;
-    --user: #1f3b48;
-    --assistant: #1a2b37;
-    --code-bg: #0f1b23;
-    --concept: #6cc69c;
-    --concept-soft: rgba(108, 198, 156, 0.14);
-    --code: #a3a7f4;
-    --code-soft: rgba(163, 167, 244, 0.14);
-    --bug: #ee8c5f;
-    --bug-soft: rgba(238, 140, 95, 0.14);
-    --hint: #f2be63;
-    --hint-text: #f2be63;
-    --hint-soft: rgba(242, 190, 99, 0.14);
-    --rating-exceptional: #6cc69c;
-    --rating-competent: #5db3ce;
-    --rating-not-ready: #f2be63;
-    --error: #ff8a80;
-    --error-soft: rgba(255, 138, 128, 0.12);
-    --overlay: rgba(6, 12, 16, 0.78);
-    --shadow: rgba(0, 0, 0, 0.3);
-  }
+/* The same scheme in deep, muted blue-slate rather than black. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #12202a;
+  --bg-deep: #0e1a22;
+  --panel: #1a2b37;
+  --panel-2: #15242f;
+  --border: #2b404e;
+  --text: #e6eef2;
+  --muted: #9db0bd;
+  --primary: #5db3ce;
+  --primary-hover: #7ac3da;
+  --primary-soft: rgba(93, 179, 206, 0.14);
+  --on-primary: #0d1b22;
+  --user: #1f3b48;
+  --assistant: #1a2b37;
+  --code-bg: #0f1b23;
+  --concept: #6cc69c;
+  --concept-soft: rgba(108, 198, 156, 0.14);
+  --code: #a3a7f4;
+  --code-soft: rgba(163, 167, 244, 0.14);
+  --bug: #ee8c5f;
+  --bug-soft: rgba(238, 140, 95, 0.14);
+  --hint: #f2be63;
+  --hint-text: #f2be63;
+  --hint-soft: rgba(242, 190, 99, 0.14);
+  --rating-exceptional: #6cc69c;
+  --rating-competent: #5db3ce;
+  --rating-not-ready: #f2be63;
+  --error: #ff8a80;
+  --error-soft: rgba(255, 138, 128, 0.12);
+  --overlay: rgba(6, 12, 16, 0.78);
+  --shadow: rgba(0, 0, 0, 0.3);
 }
 
 * {
@@ -174,6 +176,25 @@ select {
   color: var(--muted);
   font-size: 0.82rem;
   line-height: 1.35;
+}
+
+/* The sun/moon button that switches between light and dark. */
+.theme-toggle {
+  flex-shrink: 0;
+  align-self: flex-start;
+  margin-left: auto;
+  width: 2.1rem;
+  height: 2.1rem;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.chat-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .card {

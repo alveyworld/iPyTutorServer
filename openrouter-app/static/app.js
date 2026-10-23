@@ -1,4 +1,6 @@
 const STORAGE_KEY = "ipytutor_public_key";
+// THEME_KEY holds the student's light/dark choice, in this browser only.
+const THEME_KEY = "ipytutor_theme";
 
 const appEl = document.getElementById("app");
 const messagesEl = document.getElementById("messages");
@@ -19,6 +21,8 @@ const weekSelectEl = document.getElementById("week-select");
 const lessonsBlockEl = document.getElementById("lessons-block");
 const lessonListEl = document.getElementById("lesson-list");
 const majorLineEl = document.getElementById("major-line");
+const themeToggleEls = document.querySelectorAll(".theme-toggle");
+const systemDarkQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
 const MAX_USER_MESSAGE_CHARS = 5000;
 const MAX_CHAT_ATTEMPTS = 6;
@@ -701,6 +705,38 @@ weekSelectEl.addEventListener("change", () => {
   }
 });
 
+// ---------------------------------------------------------------- theme
+
+function currentTheme() {
+  return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+}
+
+// applyTheme switches the page's colors and updates the toggles to offer the other theme.
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  const other = theme === "dark" ? "light" : "dark";
+  for (const button of themeToggleEls) {
+    button.textContent = theme === "dark" ? "☀️" : "🌙";
+    button.setAttribute("aria-label", `Switch to ${other} mode`);
+    button.title = `Switch to ${other} mode`;
+  }
+}
+
+for (const button of themeToggleEls) {
+  button.addEventListener("click", () => {
+    const next = currentTheme() === "dark" ? "light" : "dark";
+    storageSet(THEME_KEY, next);
+    applyTheme(next);
+  });
+}
+
+// Until the student picks a theme, follow the device as its setting changes.
+systemDarkQuery.addEventListener("change", (event) => {
+  if (!storageGet(THEME_KEY)) {
+    applyTheme(event.matches ? "dark" : "light");
+  }
+});
+
 function closeSidebarOnMobile() {
   sidebarEl.classList.remove("open");
   toggleSidebarBtn.setAttribute("aria-expanded", "false");
@@ -711,6 +747,7 @@ toggleSidebarBtn.addEventListener("click", () => {
   toggleSidebarBtn.setAttribute("aria-expanded", open ? "true" : "false");
 });
 
+applyTheme(currentTheme());
 initMarkdown();
 renderMessages();
 renderActions();
