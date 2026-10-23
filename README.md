@@ -58,7 +58,7 @@ A few design points:
 
 - **Lessons:** edit `env/tutor/weekN_lessons.md`. Keep each lesson to what students have learned by that week; `go test` flags later-week ideas (for example, the word "file" before Week 9).
 - **Rubrics and week materials:** copy updated files from iPyIntervuServer over the ones in `env/`, so the tutor teaches to what the interview grades.
-- **Model:** set `TUTOR_MODEL` (default `deepseek/deepseek-v4-flash-0731`, the interview's model).
+- **Model:** set `TUTOR_MODEL` (default `deepseek/deepseek-v4-flash`, which is DeepSeek V4 Flash 0423, the interview's model). If your OpenRouter workspace has guardrails, the model must be allowed there.
 
 Changes to `env/` are built into the binary, so rebuild or redeploy after editing.
 
@@ -93,7 +93,7 @@ They cover the curriculum files (including the scope check on every lesson plan)
 | `OPENROUTER_API_KEY` | (required) | OpenRouter key |
 | `AUTH_PRIVATE_KEY_FILE` or `AUTH_PRIVATE_KEY` | (required) | RSA private key for login |
 | `TUTOR_DATA_DIR` | `./data` | Where student progress is stored |
-| `TUTOR_MODEL` | `deepseek/deepseek-v4-flash-0731` | OpenRouter model |
+| `TUTOR_MODEL` | `deepseek/deepseek-v4-flash` (DeepSeek V4 Flash 0423) | OpenRouter model |
 | `PORT`, `LISTEN_ADDR` | `8080`, all interfaces | Listen address (the systemd unit uses `127.0.0.1:8090`) |
 | `OPENROUTER_URL` | OpenRouter's endpoint | Point at a fake for testing |
 | `OPENROUTER_HTTP_REFERER`, `OPENROUTER_APP_TITLE` | none, `iPyTutor` | Attribution headers sent to OpenRouter |

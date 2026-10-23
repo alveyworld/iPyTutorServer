@@ -16,7 +16,9 @@ import (
 )
 
 const (
-	defaultTutorModel    = "deepseek/deepseek-v4-flash-0731"
+	// defaultTutorModel is DeepSeek V4 Flash 0423, the model the interview runs on. On
+	// OpenRouter the undated name is the 0423 release; "-0731" is a different snapshot.
+	defaultTutorModel    = "deepseek/deepseek-v4-flash"
 	defaultOpenRouterURL = "https://openrouter.ai/api/v1/chat/completions"
 )
 
