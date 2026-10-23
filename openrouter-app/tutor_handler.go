@@ -612,14 +612,16 @@ func (t *tutor) practiceReply(tc *turnContext, w *weekContent) string {
 func (t *tutor) giveHint(tc *turnContext, w *weekContent) string {
 	sess := tc.sess
 	a := sess.Activity
+	// The student's request goes last, so the model answers it (see endWithUserTurn).
+	a.addMessage("user", tc.msg)
 	res, err := t.llm.call(context.Background(), callHint, hintMessages(tutorBasePrompt(w, sess.Major), w, a))
 	logCall(tc.sessionID, callHint, res, err)
 	reply := cleanReply(tc.sessionID, callHint, res.Content)
 	if err != nil || reply == "" {
+		a.Messages = a.Messages[:len(a.Messages)-1]
 		return t.say(sess, tc.msg, tutorUnavailableMessage)
 	}
 	a.Hints++
-	a.addMessage("user", tc.msg)
 	a.addMessage("assistant", reply)
 	return t.say(sess, tc.msg, "💡 "+reply)
 }
@@ -627,14 +629,15 @@ func (t *tutor) giveHint(tc *turnContext, w *weekContent) string {
 func (t *tutor) showSolution(tc *turnContext, w *weekContent) string {
 	sess := tc.sess
 	a := sess.Activity
+	a.addMessage("user", tc.msg)
 	res, err := t.llm.call(context.Background(), callSolution, solutionMessages(tutorBasePrompt(w, sess.Major), w, a))
 	logCall(tc.sessionID, callSolution, res, err)
 	reply := cleanReply(tc.sessionID, callSolution, res.Content)
 	if err != nil || reply == "" {
+		a.Messages = a.Messages[:len(a.Messages)-1]
 		return t.say(sess, tc.msg, tutorUnavailableMessage)
 	}
 	a.Stage = stageDone
-	a.addMessage("user", tc.msg)
 	a.addMessage("assistant", reply)
 	return t.say(sess, tc.msg, reply)
 }

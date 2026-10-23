@@ -8,8 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
+	"regexp"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -104,12 +107,16 @@ const (
 	llmReasoningFirstTokenTimeout = 60 * time.Second
 	// llmRetryWindow: an attempt that fails this fast, without content, is retried once.
 	llmRetryWindow = 5 * time.Second
+	// llmMaxAttempts caps the attempts per call, counting retries after empty replies.
+	llmMaxAttempts = 3
 )
 
-func (spec callSpec) request(messages []chatMessage) llmRequest {
+// request builds the call. ignore lists providers that already failed this call, so a
+// retry goes elsewhere.
+func (spec callSpec) request(messages []chatMessage, ignore []string) llmRequest {
 	req := llmRequest{
 		Model:     tutorModel(),
-		Messages:  messages,
+		Messages:  endWithUserTurn(messages),
 		Stream:    true,
 		MaxTokens: spec.MaxTokens,
 		Reasoning: map[string]any{"enabled": false},
@@ -122,8 +129,27 @@ func (spec callSpec) request(messages []chatMessage) llmRequest {
 		req.MaxTokens += 6000
 		req.Provider = map[string]any{"require_parameters": true}
 	}
+	if len(ignore) > 0 {
+		req.Provider["ignore"] = ignore
+	}
 	return req
 }
+
+// endWithUserTurn makes sure a conversation ends with a student message. Given only the
+// system prompt, some providers (DeepInfra, in live use) reply with nothing but an
+// end-of-reply token; with a student message after it they answer normally.
+func endWithUserTurn(messages []chatMessage) []chatMessage {
+	if len(messages) > 0 && messages[len(messages)-1].Role == "user" {
+		return messages
+	}
+	return append(append([]chatMessage(nil), messages...), chatMessage{Role: "user", Content: "Please go ahead."})
+}
+
+// specialToken matches a model control token sent as text, such as DeepSeek's
+// "<｜end▁of▁sentence｜>", which some providers put in the reply.
+var specialToken = regexp.MustCompile(`<\s*[|｜][^<>|｜\n]{1,40}[|｜]\s*>`)
+
+var errEmptyReply = errors.New("empty reply")
 
 func openRouterHeaders(req *http.Request, apiKey string) {
 	req.Header.Set("Authorization", "Bearer "+apiKey)
@@ -211,7 +237,7 @@ func (c llmClient) stream(ctx context.Context, req llmRequest, firstTokenTimeout
 			continue
 		}
 		if chunk.Error != nil {
-			res.Content = content.String()
+			res.Content = specialToken.ReplaceAllString(content.String(), "")
 			res.Elapsed = time.Since(start)
 			return res, errors.New(chunk.Error.Message)
 		}
@@ -234,7 +260,7 @@ func (c llmClient) stream(ctx context.Context, req llmRequest, firstTokenTimeout
 			}
 		}
 	}
-	res.Content = content.String()
+	res.Content = specialToken.ReplaceAllString(content.String(), "")
 	res.Elapsed = time.Since(start)
 	if err := scanner.Err(); err != nil {
 		if !gotToken.Load() {
@@ -245,8 +271,10 @@ func (c llmClient) stream(ctx context.Context, req llmRequest, firstTokenTimeout
 	return res, nil
 }
 
-// call makes one call within spec.Timeout, retrying once when the first attempt failed
-// fast without any content.
+// call makes one call within spec.Timeout. An empty reply (often just an end-of-reply
+// token) is a provider fault, so it is retried, up to llmMaxAttempts in all, with every
+// provider that gave one excluded. Any other failure is retried once, only when the first
+// attempt failed fast without content.
 func (c llmClient) call(ctx context.Context, spec callSpec, messages []chatMessage) (llmResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, spec.Timeout)
 	defer cancel()
@@ -254,20 +282,28 @@ func (c llmClient) call(ctx context.Context, spec callSpec, messages []chatMessa
 	if spec.Reasoning != "" {
 		firstToken = llmReasoningFirstTokenTimeout
 	}
-	req := spec.request(messages)
+	var ignore []string
 	var res llmResult
 	var err error
-	for attempt := 1; attempt <= 2; attempt++ {
+	for attempt := 1; attempt <= llmMaxAttempts; attempt++ {
 		started := time.Now()
-		res, err = c.stream(ctx, req, firstToken)
+		res, err = c.stream(ctx, spec.request(messages, ignore), firstToken)
 		res.Attempts = attempt
 		if err == nil && strings.TrimSpace(res.Content) != "" {
 			return res, nil
 		}
-		if err == nil {
-			err = errors.New("empty reply")
+		if ctx.Err() != nil {
+			break
 		}
-		if res.TTFT > 0 || time.Since(started) >= llmRetryWindow || ctx.Err() != nil {
+		if err == nil {
+			err = errEmptyReply
+			if res.Provider != "" && !slices.Contains(ignore, res.Provider) {
+				ignore = append(ignore, res.Provider)
+			}
+			log.Printf("[tutor] llm_empty_reply call=%s provider=%s attempt=%d", spec.Name, res.Provider, attempt)
+			continue
+		}
+		if attempt > 1 || res.TTFT > 0 || time.Since(started) >= llmRetryWindow {
 			break
 		}
 	}

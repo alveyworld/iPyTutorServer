@@ -17,8 +17,10 @@ import (
 type fakeOpenRouter struct {
 	mu    sync.Mutex
 	calls map[string]int
-	// prompts holds the latest system prompt for each kind of call.
-	prompts map[string]string
+	// prompts holds the latest system prompt for each kind of call, and lastUser the
+	// student message that ended it.
+	prompts  map[string]string
+	lastUser map[string]string
 	// feedbackLevel is the LEVEL the next feedback replies end with.
 	feedbackLevel string
 }
@@ -33,6 +35,12 @@ func (f *fakeOpenRouter) prompt(kind string) string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.prompts[kind]
+}
+
+func (f *fakeOpenRouter) lastStudentMessage(kind string) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.lastUser[kind]
 }
 
 func (f *fakeOpenRouter) setFeedbackLevel(level string) {
@@ -78,12 +86,19 @@ func (f *fakeOpenRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	kind, content := f.reply(req.Messages[0].Content)
+	provider := "Baidu"
+	last := req.Messages[len(req.Messages)-1]
+	if last.Role != "user" {
+		// Like DeepInfra given only instructions: an end-of-reply token and nothing else.
+		kind, content, provider = "end_of_reply", "<｜end▁of▁sentence｜>", "DeepInfra"
+	}
 	f.mu.Lock()
 	f.calls[kind]++
 	f.prompts[kind] = req.Messages[0].Content
+	f.lastUser[kind] = last.Content
 	f.mu.Unlock()
 	w.Header().Set("Content-Type", "text/event-stream")
-	chunk, _ := json.Marshal(map[string]any{"choices": []map[string]any{{"delta": map[string]string{"content": content}}}})
+	chunk, _ := json.Marshal(map[string]any{"provider": provider, "choices": []map[string]any{{"delta": map[string]string{"content": content}}}})
 	fmt.Fprintf(w, ": OPENROUTER PROCESSING\n\ndata: %s\n\ndata: [DONE]\n\n", chunk)
 }
 
@@ -106,7 +121,7 @@ func newTutorHarness(t *testing.T, upstream string) *tutorHarness {
 
 func withFakeOpenRouter(t *testing.T) (*fakeOpenRouter, string) {
 	t.Helper()
-	fake := &fakeOpenRouter{calls: map[string]int{}, prompts: map[string]string{}}
+	fake := &fakeOpenRouter{calls: map[string]int{}, prompts: map[string]string{}, lastUser: map[string]string{}}
 	server := httptest.NewServer(fake)
 	t.Cleanup(server.Close)
 	return fake, server.URL
@@ -352,6 +367,21 @@ func TestCodeProblemStepsWithInterviewAdvice(t *testing.T) {
 	if !strings.Contains(fake.prompt("problem_code"), "- Seed germination sorter") {
 		t.Fatalf("next code problem prompt doesn't avoid the last one:\n%s", fake.prompt("problem_code"))
 	}
+
+	// Every request ended with a student message, so none got an end-of-reply-only answer.
+	h.send("teach me", "")
+	for kind, want := range map[string]string{
+		"problem_code": "Please write the practice problem now.",
+		"hint":         "💡 Hint",
+		"lesson":       "Please teach this lesson now.",
+	} {
+		if got := fake.lastStudentMessage(kind); got != want {
+			t.Errorf("%s request ended with %q, want %q", kind, got, want)
+		}
+	}
+	if n := fake.count("end_of_reply"); n != 0 {
+		t.Fatalf("%d requests ended without a student message", n)
+	}
 }
 
 func TestWeek1OffersOnlyDecomposition(t *testing.T) {
@@ -394,6 +424,9 @@ func TestBugHuntStepsAndSolution(t *testing.T) {
 	}
 	reply, state = h.send("✅ Show solution", "solution")
 	mustContain(t, "solution", reply, "worked solution", "**Interview prep:**")
+	if got := fake.lastStudentMessage("solution"); got != "✅ Show solution" {
+		t.Fatalf("solution request ended with %q", got)
+	}
 	if state.Activity.Open {
 		t.Fatal("problem still open after the solution")
 	}

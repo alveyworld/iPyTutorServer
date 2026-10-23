@@ -121,7 +121,7 @@ func lessonMessages(base string, w *weekContent, index int, major string) []chat
 	b.WriteString("### In the interview\nOne or two sentences on how this shows up in the interview and what a strong answer includes.\n")
 	b.WriteString("### Quick check\nOne short question about this lesson for the student to answer. Don't answer it.\n")
 	b.WriteString("\nKeep the whole lesson under about 400 words, plus any code. Start the reply directly with the heading.")
-	return replyMessages(base, b.String())
+	return append(replyMessages(base, b.String()), chatMessage{Role: "user", Content: "Please teach this lesson now."})
 }
 
 func majorOrEveryday(major string) string {
@@ -205,7 +205,7 @@ func problemMessages(base string, w *weekContent, kind, major, difficulty string
 		b.WriteString("\nYour previous draft had problems; avoid them this time:\n- " + strings.Join(fixes, "\n- ") + "\n")
 	}
 	b.WriteString("\nReply in exactly this format and nothing else:\nTITLE: <3 to 8 words naming the scenario>\nPROBLEM:\n<what the student sees, in Markdown>\nREFERENCE:\n<the answer key, which the student never sees>")
-	return systemMessages(base, b.String())
+	return append(systemMessages(base, b.String()), chatMessage{Role: "user", Content: "Please write the practice problem now."})
 }
 
 // taskLimits states, in plain words, what a practice problem must not need at this week.
