@@ -6,9 +6,8 @@
 #   ./deploy/staging.sh logs     show recent staging logs
 #
 # Staging uses the production secrets (/etc/ipytutor/env) and runs as the ipytutor
-# user, but listens only on localhost and keeps its own student progress in
-# /var/lib/ipytutor-staging. Reach it by running this on your own computer (not the
-# server), then open http://localhost:8091 there:
+# user, but listens only on localhost. Reach it by running this on your own computer
+# (not the server), then open http://localhost:8091 there:
 #   ssh -N -L 8091:127.0.0.1:8091 manager@aalang.org
 # Set STAGING_SSH_HOST to change the host shown in the printed instructions.
 set -euo pipefail
@@ -49,9 +48,8 @@ sudo systemctl stop "$UNIT" 2>/dev/null || true
 sudo systemctl reset-failed "$UNIT" 2>/dev/null || true
 sudo install -m 755 "$BUILD_OUT" "$BIN"
 sudo systemd-run --unit="$UNIT" --uid=ipytutor --gid=ipytutor \
-  -p EnvironmentFile=/etc/ipytutor/env -p StateDirectory=ipytutor-staging \
+  -p EnvironmentFile=/etc/ipytutor/env \
   -E AUTH_PRIVATE_KEY_FILE=/etc/ipytutor/auth-private-key.pem \
-  -E TUTOR_DATA_DIR=/var/lib/ipytutor-staging \
   -E LISTEN_ADDR=127.0.0.1 -E PORT="$PORT" \
   "$BIN"
 

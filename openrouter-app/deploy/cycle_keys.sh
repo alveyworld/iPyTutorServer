@@ -57,8 +57,7 @@ Usage: sudo ./deploy/cycle_keys.sh [options]
   -h, --help       This text.
 
 Rotating logs every student out; they must paste the new public key
-(env/ipytutor-pub.pem) to sign back in. Student progress is kept: it is stored
-under each student's study code, not the login key.
+(env/ipytutor-pub.pem) to sign back in. Tutoring conversations in progress are lost.
 USAGE
 }
 

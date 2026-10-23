@@ -2,31 +2,22 @@
 
 iPyTutor is a weekly Python tutor that prepares students for **iPyIntervu**, the AI interview that rates them *Not Ready Yet*, *Competent* or *Exceptional* on each week's key concept. It started as a copy of iPyIntervuServer: it keeps that project's login, deployment, week materials and rubrics, and replaces the interviewer with a tutor.
 
-Each week a student can:
+Students can study **any week and any lesson, in any order, at any time**: pick a week from the menu or a lesson from the list, or type `week 6`, `lesson 3`, `week 7 lesson 2` or a topic such as `lists`. The tutor assumes they know everything from the weeks before the one they choose. It keeps **no record of students**: there are no accounts, and nothing is saved between visits.
 
-- **Learn the concept** through short lessons (📖 *Teach me*, *Next lesson*), with examples set in their own major and a quick check at the end of each.
+In any week a student can:
+
+- **Learn the concept** through short lessons (📖 *Teach me*, *Next lesson*, or any lesson by number), with examples set in their major if they give it, and a quick check at the end of each.
 - **Practice the interview's three parts** on request, in the interview's own formats:
   - 💬 **Concept questions**: a real-world situation and a question about how the week's Python works, with an interviewer-style follow-up.
   - 🧩 **Code problems**: a story problem with *Data available* and *What's wanted*. The student breaks it down, writes and pastes the code, then explains it and how they used AI.
   - 🐞 **Bug hunts**: a short program with one real bug. The student explains how they'd track it down, then pins down the fix.
   - Week 1 is decomposition only, like its interview.
-- **Get feedback after every answer**, ending in an **Interview check**: the rating the answer would likely get, and what would raise it. Students can ask for a **hint** (progressively more specific), the worked **solution**, or **another one**, **a harder one**, or **an easier one**.
+- **Get their answers evaluated, with interview advice.** Every practice answer gets feedback, an **Interview check** (the rating it would likely get, and what would raise it), and an **Interview prep** tip: one concrete thing to practice or do differently before the interview. Lesson quick checks, worked solutions and explanations in conversation get the same evaluation and advice. Students can ask for a **hint** (progressively more specific), the worked **solution**, or **another one**, **a harder one**, or **an easier one**.
 - **See how the interview works** (🎯 *Interview guide*): what each part asks and the week's rubric criteria for Competent and Exceptional.
-- **Track progress week to week** (📊 *My progress*): lessons done, the latest rating in each part, and an **interview readiness** estimate that uses the interview's own rule (Not Ready Yet in any part means not ready; Exceptional needs all three parts Exceptional). The sidebar always shows the suggested next step.
 
 Students can also just ask questions or paste code to have it explained.
 
 The application lives in [`openrouter-app/`](openrouter-app/), deployment scripts in [`openrouter-app/deploy/`](openrouter-app/deploy/).
-
-## How students are recognized: study codes
-
-There are no accounts. On first visit the tutor asks for the student's major and gives them a **study code** such as `maple-river-4821`. Their progress is saved on the server under that code:
-
-- The browser remembers the code, so the student is welcomed back automatically.
-- On another device, they type the code to pick up where they left off.
-- *Not you? Use a different study code* in the sidebar forgets the code in that browser.
-
-Codes are random (about 14 million combinations), and the site is still behind the class's login key. A session that enters 5 unknown codes is refused further tries. Progress is study data only: major, lessons done and practice ratings.
 
 ## How it works
 
@@ -38,11 +29,11 @@ Codes are random (about 14 million combinations), and the site is still behind t
 | Bug-hunt guide: suitable bugs per week and what good debugging looks like at each level | `env/tutor/bug_hunting_guide.md` |
 | Loads and parses all of the above | `curriculum.go` |
 | What each week may use, and the check that keeps problems in scope | `week_scope.go`, `week_map.go` |
-| Turn routing: onboarding, commands, lessons, practice stages, hints, solutions | `tutor_handler.go`, `tutor_intents.go`, `tutor_session.go` |
+| Turn routing: week and lesson choice, commands, lessons, practice stages, hints, solutions | `tutor_handler.go`, `tutor_intents.go`, `tutor_session.go` |
 | Prompts | `tutor_prompts.go` |
 | Practice problems: hidden answer key, scope and format checks, background preparation | `tutor_practice.go` |
-| Progress store (one JSON file per study code) and readiness | `progress_store.go`, `readiness.go` |
-| Server-written messages (welcome, weekly plan, interview guide, progress table) | `tutor_messages.go` |
+| Server-written messages (welcome, week overview, interview guide, help) | `tutor_messages.go` |
+| Page state for the sidebar and buttons | `tutor_state.go` |
 | OpenRouter client | `llm.go` |
 | Browser UI | `static/` |
 
@@ -51,8 +42,9 @@ A few design points:
 - **Practice problems carry a hidden answer key.** The model writes each problem with a `REFERENCE` section, which the server keeps and the student never sees. Feedback, hints and solutions are judged against it.
 - **Problems are checked before students see them.** A problem that uses something from a later week (the same scope checker the interview uses), or that breaks its format (code in a code problem, a bug hunt without a program), is rewritten once.
 - **Problems are prepared in the background.** Once a student starts working in a week, the tutor drafts one problem of each kind with reasoning turned on, which makes bug hunts more reliable. A problem is usually ready the moment it's asked for, and the next one is prepared as each is used. Opening the page alone costs no model calls.
-- **Ratings are hidden from the reply text.** Feedback ends with a `LEVEL:` line that the server strips and records. A question or a request for help isn't rated and doesn't count as an attempt.
-- **Fixed text comes from the server.** Welcome, weekly plan, interview guide and progress need no model call, so they're instant and always match the saved data. If the model is unreachable, a lesson falls back to its outline.
+- **Each problem moves through the interview's steps.** Feedback ends with a hidden `LEVEL:` line that the server strips; a rated answer moves the problem to its next step (a code problem goes breakdown, code, explanation). A question or a request for help isn't rated and leaves the problem where it was.
+- **Nothing is kept between visits.** A session lives in server memory only. It remembers the week, the major, the current lesson or problem and recent problem titles (so problems don't repeat) until the page is reloaded.
+- **Fixed text comes from the server.** Welcome, week overview, interview guide and help need no model call, so they're instant. If the model is unreachable, a lesson falls back to its outline.
 
 ### Editing the curriculum
 
@@ -76,7 +68,7 @@ This uses canned replies from [`tools/fake-openrouter`](tools/fake-openrouter/ma
 tools/run-local.sh
 ```
 
-Open http://localhost:8080 and paste the development public key it prints (`~/.ipytutor-dev/auth-public-key.pem`). Local progress is kept in `~/.ipytutor-dev/data`.
+Open http://localhost:8080 and paste the development public key it prints (`~/.ipytutor-dev/auth-public-key.pem`).
 
 Run the tests:
 
@@ -84,7 +76,7 @@ Run the tests:
 cd openrouter-app && go test ./...
 ```
 
-They cover the curriculum files (including the scope check on every lesson plan), study codes and the progress store, readiness, command detection and problem parsing. End-to-end tests drive whole student journeys through the HTTP handlers against a fake OpenRouter.
+They cover the curriculum files (including the scope check on every lesson plan), command detection and problem parsing. End-to-end tests drive whole student sessions through the HTTP handlers against a fake OpenRouter: jumping between weeks and lessons, each practice format's steps, and recovering after a restart.
 
 ## Configuration
 
@@ -92,7 +84,6 @@ They cover the curriculum files (including the scope check on every lesson plan)
 |---|---|---|
 | `OPENROUTER_API_KEY` | (required) | OpenRouter key |
 | `AUTH_PRIVATE_KEY_FILE` or `AUTH_PRIVATE_KEY` | (required) | RSA private key for login |
-| `TUTOR_DATA_DIR` | `./data` | Where student progress is stored |
 | `TUTOR_MODEL` | `deepseek/deepseek-v4-flash` (DeepSeek V4 Flash 0423) | OpenRouter model |
 | `PORT`, `LISTEN_ADDR` | `8080`, all interfaces | Listen address (the systemd unit uses `127.0.0.1:8090`) |
 | `OPENROUTER_URL` | OpenRouter's endpoint | Point at a fake for testing |
@@ -108,7 +99,6 @@ The scripts deploy iPyTutor as its own service, so it can share a server with iP
 | Binary | `/usr/local/bin/ipytutor` | `/usr/local/bin/openrouter-app` |
 | Secrets | `/etc/ipytutor/` | `/etc/openrouter-app/` |
 | Port (localhost) | `8090` | `8080` |
-| Student progress | `/var/lib/ipytutor/` | none |
 
 On an Ubuntu 24.04 server with Go installed, with the repository cloned to, for example, `/home/manager/iPyTutorServer`:
 
@@ -149,13 +139,11 @@ sudo ./deploy/setup-https.sh tutor.aalang.org admin@aalang.org
 ./deploy/redeploy.sh
 ```
 
-**Staging:** `./deploy/staging.sh` runs the current source on `127.0.0.1:8091`, with its own progress directory, next to production.
+**Staging:** `./deploy/staging.sh` runs the current source on `127.0.0.1:8091`, next to production.
 
-**Rotating the login key:** `sudo ./deploy/cycle_keys.sh` (try `--dry-run` first). Student progress is kept, because it's stored under study codes, not the login key.
+**Rotating the login key:** `sudo ./deploy/cycle_keys.sh` (try `--dry-run` first). Students must paste the new public key; conversations in progress are lost.
 
-### Back up student progress
-
-All progress is in `/var/lib/ipytutor/`, one small JSON file per student. Include it in the server's backups (DigitalOcean droplet backups cover it). Progress is stored on the server's own disk, so run a single server; several servers behind a load balancer would each see different progress.
+The tutor stores nothing on disk, so there's no student data to back up. Conversations live in the server's memory, so run one server (or use sticky sessions behind a load balancer).
 
 ### Deploy scripts
 
@@ -176,4 +164,4 @@ All progress is in `/var/lib/ipytutor/`, one small JSON file per student. Includ
 - **The tutor replies "couldn't reach the tutor model":** check the OpenRouter key in `/etc/ipytutor/env` and the `[tutor] llm` log lines for the error.
 - **Authentication fails in the browser:** use `https://`, and make sure the public key students paste matches the private key in `/etc/ipytutor/`.
 - **`502 Bad Gateway` from nginx:** the app must be running on `127.0.0.1:8090`.
-- **A student lost their study code:** each file in `/var/lib/ipytutor/` is named after a code and records the student's major, so you can help them find theirs.
+- **Model calls fail with `404 ... guardrail`:** your OpenRouter workspace's guardrails don't allow the model. Allow `TUTOR_MODEL`'s model there, or choose an allowed one.

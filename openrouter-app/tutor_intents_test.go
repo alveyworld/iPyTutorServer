@@ -32,15 +32,23 @@ func TestDetectIntent(t *testing.T) {
 		{"one more", false, intent{Kind: intentAnother}},
 		{"an easier one", false, intent{Kind: intentAnother, Difficulty: difficultyEasier}},
 		{"another problem", false, intent{Kind: intentAnother}},
-		{"my progress", false, intent{Kind: intentProgress}},
-		{"Am I ready for the interview?", false, intent{Kind: intentProgress}},
 		{"interview tips", false, intent{Kind: intentGuide}},
 		{"How does the interview work?", false, intent{Kind: intentGuide}},
 		{"week 7", false, intent{Kind: intentWeek, Week: 7}},
 		{"switch to week 3", false, intent{Kind: intentWeek, Week: 3}},
+		{"skip ahead to week 9", false, intent{Kind: intentWeek, Week: 9}},
+		{"week 6 lesson 2", false, intent{Kind: intentWeek, Week: 6, Lesson: 2}},
+		{"Week 6, lesson 2", false, intent{Kind: intentWeek, Week: 6, Lesson: 2}},
+		{"lesson 4 of week 8", false, intent{Kind: intentWeek, Week: 8, Lesson: 4}},
+		{"study lists", false, intent{Kind: intentWeek, Week: 8, Topic: true}},
+		{"I want to learn string methods", false, intent{Kind: intentWeek, Week: 4, Topic: true}},
+		{"teach me for loops", false, intent{Kind: intentWeek, Week: 6, Topic: true, Teach: true}},
+		{"let's study while loops and menus", false, intent{Kind: intentWeek, Week: 7, Topic: true}},
 		{"change week", false, intent{Kind: intentWeekMenu}},
-		{"what's my study code", false, intent{Kind: intentStudyCode}},
-		{"plan", false, intent{Kind: intentPlan}},
+		{"overview", false, intent{Kind: intentOverview}},
+		{"plan", false, intent{Kind: intentOverview}},
+		{"my major is Nursing", false, intent{Kind: intentSetMajor}},
+		{"I'm a biology major", false, intent{Kind: intentSetMajor}},
 
 		// Answers and questions are never commands.
 		{"one", true, intent{}},
@@ -49,6 +57,8 @@ func TestDetectIntent(t *testing.T) {
 		{"I would use a hint variable to store the message for the user", true, intent{}},
 		{"week 12", false, intent{}},
 		{"What does elif mean?", false, intent{}},
+		{"study for the interview", false, intent{}},
+		{"my progress", false, intent{}},
 		{"```python\nhint = 3\n```", true, intent{}},
 		{"total = price * quantity\nprint(total)", true, intent{}},
 	}
@@ -62,7 +72,9 @@ func TestDetectIntent(t *testing.T) {
 func TestParseAction(t *testing.T) {
 	cases := map[string]intent{
 		"lesson":         {Kind: intentLesson},
+		"lesson:3":       {Kind: intentLesson, Lesson: 3},
 		"next_lesson":    {Kind: intentNextLesson},
+		"overview":       {Kind: intentOverview},
 		"practice:code":  {Kind: intentPractice, Practice: kindCode},
 		"practice":       {Kind: intentPractice},
 		"another:harder": {Kind: intentAnother, Difficulty: difficultyHarder},
@@ -77,7 +89,7 @@ func TestParseAction(t *testing.T) {
 			t.Errorf("parseAction(%q) = %+v, %v; want %+v", action, got, ok, want)
 		}
 	}
-	for _, action := range []string{"", "week:0", "week:10", "practice:essay", "delete"} {
+	for _, action := range []string{"", "week:0", "week:10", "lesson:0", "practice:essay", "progress", "delete"} {
 		if got, ok := parseAction(action); ok {
 			t.Errorf("parseAction(%q) = %+v, want not ok", action, got)
 		}

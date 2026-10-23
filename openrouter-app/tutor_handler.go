@@ -2,10 +2,7 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -17,29 +14,23 @@ import (
 
 const maxUserMessageChars = 6000
 
+// tutor answers students' turns. It keeps no record of students between visits: each
+// browser session starts fresh, and the student can study any week and lesson at any time.
 type tutor struct {
 	llm      llmClient
-	store    *progressStore
 	sessions *sessionStore
 }
 
-func newTutor(llm llmClient, store *progressStore) *tutor {
-	return &tutor{llm: llm, store: store, sessions: newSessionStore()}
+func newTutor(llm llmClient) *tutor {
+	return &tutor{llm: llm, sessions: newSessionStore()}
 }
 
 // chatRequest is what the browser sends each turn. Messages is the visible conversation;
 // the tutor keeps its own copy, and reads only the latest user message from it.
 type chatRequest struct {
 	Messages []chatMessage `json:"messages"`
-	// Action is set by a UI button, such as "practice:code" or "week:5".
+	// Action is set by a UI button, such as "practice:code", "week:5" or "lesson:3".
 	Action string `json:"action,omitempty"`
-	// StudyCode is the browser's remembered study code, used to restore a session lost
-	// in a server restart.
-	StudyCode string `json:"study_code,omitempty"`
-}
-
-type bootstrapRequest struct {
-	StudyCode string `json:"study_code,omitempty"`
 }
 
 type bootstrapResponse struct {
@@ -47,53 +38,31 @@ type bootstrapResponse struct {
 	State     stateResponse `json:"state"`
 }
 
-// handleBootstrap starts the conversation for a page load: a welcome back for a known study
-// code, otherwise the welcome.
+// handleBootstrap starts a fresh conversation for a page load.
 func (t *tutor) handleBootstrap(w http.ResponseWriter, r *http.Request) {
 	sessionID, ok := sessionIDFromContext(r.Context())
 	if !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	var req bootstrapRequest
-	r.Body = http.MaxBytesReader(w, r.Body, maxBodySize)
-	_ = json.NewDecoder(r.Body).Decode(&req) // an empty body is a new student
-
 	sess := t.sessions.getOrCreate(sessionID)
 	sess.turnMu.Lock()
 	defer sess.turnMu.Unlock()
-	t.resetSession(sess)
-
-	reply := welcomeMessage
-	if code, ok := normalizeStudyCode(req.StudyCode); ok {
-		if p, err := t.resumeStudent(sessionID, sess, code); err == nil {
-			reply = welcomeBackMessage(p)
-		}
-	}
+	resetSession(sess)
+	sess.started = true
+	reply := welcomeMessage()
 	sess.remember("", reply)
-	writeJSON(w, http.StatusOK, bootstrapResponse{Assistant: reply, State: t.state(sess)})
+	writeJSON(w, http.StatusOK, bootstrapResponse{Assistant: reply, State: sess.state()})
 }
 
-// handleReset forgets the session's student, for "use a different study code".
-func (t *tutor) handleReset(w http.ResponseWriter, r *http.Request) {
-	sessionID, ok := sessionIDFromContext(r.Context())
-	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-	sess := t.sessions.getOrCreate(sessionID)
-	sess.turnMu.Lock()
-	t.resetSession(sess)
-	sess.turnMu.Unlock()
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func (t *tutor) resetSession(sess *tutorSession) {
+func resetSession(sess *tutorSession) {
 	sess.Phase = phaseWelcome
-	sess.StudyCode = ""
+	sess.Major = ""
 	sess.Week = 0
 	sess.Activity = nil
+	sess.LastLesson = -1
 	sess.LastPracticeKind = ""
+	sess.recentTitles = map[string][]string{}
 	sess.History = nil
 	sess.clearPrepared()
 }
@@ -109,7 +78,7 @@ func (t *tutor) handleState(w http.ResponseWriter, r *http.Request) {
 		sess = newTutorSession()
 	}
 	sess.turnMu.Lock()
-	state := t.state(sess)
+	state := sess.state()
 	sess.turnMu.Unlock()
 	writeJSON(w, http.StatusOK, state)
 }
@@ -156,7 +125,7 @@ func (t *tutor) handleChat(turns *turnStore) http.HandlerFunc {
 		sess.turnMu.Lock()
 		started := time.Now()
 		reply := t.turn(sessionID, sess, req)
-		state := t.state(sess)
+		state := sess.state()
 		sess.turnMu.Unlock()
 		log.Printf("[tutor] turn session=%s turn_id=%s phase=%s week=%d activity=%s ms=%d",
 			shortID(sessionID), shortID(turnID), sess.Phase, sess.Week, activityName(sess.Activity), time.Since(started).Milliseconds())
@@ -200,7 +169,8 @@ func lastUserMessage(messages []chatMessage) string {
 	return ""
 }
 
-// hasPriorConversation reports a request carrying earlier turns.
+// hasPriorConversation reports a request carrying earlier turns. The page's own "start"
+// message counts, so a first real message after it makes two.
 func hasPriorConversation(msgs []chatMessage) bool {
 	users := 0
 	for _, m := range msgs {
@@ -216,9 +186,10 @@ type turnContext struct {
 	sessionID string
 	sess      *tutorSession
 	msg       string
-	action    string
-	// restored is set when this turn restored a session lost in a restart.
-	restored bool
+	in        intent
+	// lost is set when the browser has a conversation the server no longer knows, after a
+	// restart.
+	lost bool
 }
 
 func (t *tutor) turn(sessionID string, sess *tutorSession, req chatRequest) string {
@@ -226,32 +197,72 @@ func (t *tutor) turn(sessionID string, sess *tutorSession, req chatRequest) stri
 	if len(msg) > maxUserMessageChars {
 		msg = msg[:maxUserMessageChars]
 	}
-	tc := &turnContext{sessionID: sessionID, sess: sess, msg: msg, action: req.Action}
-
-	// The session is in memory; after a restart the browser still has the conversation
-	// and the study code, so the student is put back where their progress says.
-	if sess.Phase == phaseWelcome && hasPriorConversation(req.Messages) {
-		if code, ok := normalizeStudyCode(req.StudyCode); ok {
-			if _, err := t.resumeStudent(sessionID, sess, code); err == nil {
-				tc.restored = true
-				log.Printf("[tutor] session_restored session=%s", shortID(sessionID))
-			}
-		}
+	tc := &turnContext{sessionID: sessionID, sess: sess, msg: msg}
+	in, ok := parseAction(req.Action)
+	if !ok {
+		in = detectIntent(msg, sess.Activity.open())
 	}
+	tc.in = in
+	tc.lost = !sess.started && hasPriorConversation(req.Messages)
+	sess.started = true
+	log.Printf("[tutor] intent session=%s phase=%s week=%d intent=%q practice=%s activity=%s",
+		shortID(sessionID), sess.Phase, sess.Week, in.Kind, in.Practice, activityName(sess.Activity))
 
-	var reply string
+	// Choosing a week, a lesson or a major works from anywhere.
+	if reply, ok := t.navigate(tc); ok {
+		return reply
+	}
 	switch sess.Phase {
 	case phaseWelcome:
-		reply = t.welcomeTurn(tc)
+		return t.welcomeTurn(tc)
 	case phaseChooseWeek:
-		reply = t.chooseWeekTurn(tc)
-	default:
-		reply = t.studyTurn(tc)
+		return t.chooseWeekTurn(tc)
 	}
-	return reply
+	return t.studyTurn(tc)
 }
 
-var majorPrefix = regexp.MustCompile(`(?i)^(?:(?:hi|hello|hey)[,!. ]+)?(?:my major is|i'?m majoring in|i am majoring in|i major in|i'?m an?|i am an?|i study|i'?m studying|major\s*:|it'?s)\s+`)
+// navigate handles the commands that work in every phase: studying a week (optionally at
+// a lesson), a lesson of the current week, the week list, and setting the major.
+func (t *tutor) navigate(tc *turnContext) (string, bool) {
+	sess, in := tc.sess, tc.in
+	switch in.Kind {
+	case intentWeek:
+		// "teach me about elif" during week 5 is a question about this week, not a switch.
+		if in.Topic && in.Week == sess.Week && sess.Phase == phaseStudying {
+			return "", false
+		}
+		lesson := in.Lesson - 1
+		if in.Teach {
+			lesson = 0
+		}
+		if lesson < 0 {
+			return t.startWeek(tc, in.Week), true
+		}
+		changed := sess.Week != in.Week
+		t.switchWeek(tc, in.Week)
+		reply := t.teachLesson(tc, weekInfo(in.Week), lesson, true)
+		if changed {
+			reply = "*📚 Now studying **" + weekInfo(in.Week).Title + "**.*\n\n" + reply
+		}
+		return reply, true
+	case intentLesson:
+		if sess.Week == 0 && in.Lesson > 0 {
+			return t.say(sess, tc.msg, pickWeekFirstMessage("Lessons belong to a week, so pick the week first. For example, type `week 5 lesson 2`.")), true
+		}
+	case intentWeekMenu:
+		sess.Phase = phaseChooseWeek
+		return t.say(sess, tc.msg, chooseWeekMessage()), true
+	case intentSetMajor:
+		major, ok := cleanMajor(tc.msg)
+		if !ok {
+			return "", false
+		}
+		return t.setMajor(tc, major), true
+	}
+	return "", false
+}
+
+var majorPrefix = regexp.MustCompile(`(?i)^(?:(?:hi|hello|hey)[,!. ]+)?(?:my major is|i'?m majoring in|i am majoring in|i major in|i'?m an?|i am an?|i study|i'?m studying|major\s*:?|set my major to|change my major to|it'?s)\s+`)
 var majorSuffix = regexp.MustCompile(`(?i)\s+(?:major|student)$`)
 
 // cleanMajor extracts the major from a reply such as "I'm a biology major".
@@ -266,191 +277,166 @@ func cleanMajor(msg string) (string, bool) {
 	return s, true
 }
 
-func (t *tutor) welcomeTurn(tc *turnContext) string {
+// setMajor changes the field examples and problems are set in. Problems drafted for the
+// old field are dropped.
+func (t *tutor) setMajor(tc *turnContext, major string) string {
 	sess := tc.sess
-	if code, ok := normalizeStudyCode(tc.msg); ok {
-		if sess.FailedCodeLookups >= maxFailedCodeTries {
-			return t.say(sess, tc.msg, tooManyCodeTriesMessage)
-		}
-		p, err := t.resumeStudent(tc.sessionID, sess, code)
-		if errors.Is(err, errUnknownStudyCode) {
-			sess.FailedCodeLookups++
-			return t.say(sess, tc.msg, unknownStudyCodeMessage(code))
-		}
-		if err != nil {
-			log.Printf("[tutor] resume_failed session=%s err=%v", shortID(tc.sessionID), err)
-			return t.say(sess, tc.msg, "Sorry, I couldn't open that study profile just now. Please try again.")
-		}
-		return t.say(sess, tc.msg, welcomeBackMessage(p))
-	}
-	major, ok := cleanMajor(tc.msg)
-	if !ok {
-		return t.say(sess, tc.msg, askMajorAgainMessage)
-	}
-	p, err := t.store.create(major)
-	if err != nil {
-		log.Printf("[tutor] create_profile_failed session=%s err=%v", shortID(tc.sessionID), err)
-		return t.say(sess, tc.msg, "Sorry, I couldn't set up your study profile just now. Please try again.")
-	}
-	log.Printf("[tutor] profile_created session=%s", shortID(tc.sessionID))
-	sess.StudyCode = p.StudyCode
-	sess.Phase = phaseChooseWeek
-	return t.say(sess, tc.msg, studyCodeIssuedMessage(p))
-}
-
-// resumeStudent attaches the session to a stored profile and returns to their week.
-func (t *tutor) resumeStudent(sessionID string, sess *tutorSession, code string) (studentProfile, error) {
-	p, err := t.store.update(code, func(*studentProfile) {})
-	if err != nil {
-		return studentProfile{}, err
-	}
-	t.resetSession(sess)
-	sess.StudyCode = p.StudyCode
-	sess.FailedCodeLookups = 0
-	// Problems are prepared on the student's first action (studyTurn), not on a page load.
-	if w := weekInfo(p.CurrentWeek); w != nil {
-		sess.Phase = phaseStudying
-		sess.Week = w.Number
-	} else {
+	sess.Major = major
+	sess.clearPrepared()
+	if sess.Week == 0 {
 		sess.Phase = phaseChooseWeek
 	}
-	log.Printf("[tutor] student_resumed session=%s week=%d", shortID(sessionID), p.CurrentWeek)
-	return p, nil
+	log.Printf("[tutor] major_set session=%s", shortID(tc.sessionID))
+	return t.say(sess, tc.msg, majorSetMessage(major, sess.Week))
+}
+
+// weekFromMessage reads a bare week choice such as "5", "week 5" or "lists".
+func weekFromMessage(msg string) (int, bool) {
+	sel, ok := matchWeekSelection(strings.TrimPrefix(normalizeUserInput(strings.Trim(msg, ".!?")), "week "))
+	return sel.CurrentWeekNumber, ok
+}
+
+// studyCommand reports commands that need a week to work on.
+func studyCommand(k intentKind) bool {
+	switch k {
+	case intentLesson, intentNextLesson, intentPractice, intentAnother, intentHint, intentSolution, intentGuide, intentOverview:
+		return true
+	}
+	return false
+}
+
+func (t *tutor) welcomeTurn(tc *turnContext) string {
+	sess := tc.sess
+	if week, ok := weekFromMessage(tc.msg); ok {
+		return t.startWeek(tc, week)
+	}
+	if tc.lost {
+		// The server restarted and lost this conversation; carry on from a week choice.
+		sess.Phase = phaseChooseWeek
+		return t.say(sess, tc.msg, serverRestartedMessage+weekListMarkdown())
+	}
+	switch {
+	case tc.in.Kind == intentHelp:
+		return t.say(sess, tc.msg, helpMessage(nil))
+	case studyCommand(tc.in.Kind):
+		sess.Phase = phaseChooseWeek
+		return t.say(sess, tc.msg, pickWeekFirstMessage(""))
+	}
+	if major, ok := cleanMajor(tc.msg); ok {
+		return t.setMajor(tc, major)
+	}
+	return t.say(sess, tc.msg, askMajorOrWeekMessage)
 }
 
 func (t *tutor) chooseWeekTurn(tc *turnContext) string {
 	sess := tc.sess
-	in, ok := parseAction(tc.action)
-	if !ok {
-		in = detectIntent(tc.msg, false)
-	}
-	if in.Kind == intentWeek {
-		return t.startWeek(tc, in.Week)
-	}
-	if sel, ok := matchWeekSelection(strings.TrimPrefix(normalizeUserInput(tc.msg), "week ")); ok {
-		return t.startWeek(tc, sel.CurrentWeekNumber)
-	}
-	if code, ok := normalizeStudyCode(tc.msg); ok && code != sess.StudyCode {
-		sess.Phase = phaseWelcome
-		return t.welcomeTurn(tc)
+	if week, ok := weekFromMessage(tc.msg); ok {
+		return t.startWeek(tc, week)
 	}
 	// Someone who was studying a week and asked for the list can carry on with it.
-	if sess.Week > 0 && (in.Kind != intentNone || len(strings.Fields(tc.msg)) > 3) {
+	if sess.Week > 0 && (tc.in.Kind != intentNone || len(strings.Fields(tc.msg)) > 3) {
 		sess.Phase = phaseStudying
 		return t.studyTurn(tc)
 	}
-	p, err := t.store.get(sess.StudyCode)
-	if err != nil {
-		return t.say(sess, tc.msg, tutorUnavailableMessage)
+	if tc.in.Kind == intentHelp {
+		return t.say(sess, tc.msg, helpMessage(nil))
 	}
-	return t.say(sess, tc.msg, invalidWeekMessage(p))
+	if sess.Major == "" && tc.in.Kind == intentNone {
+		if major, ok := cleanMajor(tc.msg); ok {
+			return t.setMajor(tc, major)
+		}
+	}
+	return t.say(sess, tc.msg, invalidWeekMessage())
 }
 
+// startWeek switches to a week and shows its overview.
 func (t *tutor) startWeek(tc *turnContext, week int) string {
+	t.switchWeek(tc, week)
+	return t.say(tc.sess, tc.msg, weekOverviewMessage(weekInfo(week), tc.sess.Major))
+}
+
+// switchWeek makes week the one being studied and starts preparing its problems.
+func (t *tutor) switchWeek(tc *turnContext, week int) {
 	sess := tc.sess
 	w := weekInfo(week)
-	p, err := t.store.update(sess.StudyCode, func(p *studentProfile) {
-		p.CurrentWeek = week
-		p.week(week).LastStudied = time.Now()
-	})
-	if err != nil {
-		log.Printf("[tutor] start_week_failed session=%s err=%v", shortID(tc.sessionID), err)
-		return t.say(sess, tc.msg, tutorUnavailableMessage)
-	}
 	if sess.Week != week {
 		sess.clearPrepared()
 		sess.LastPracticeKind = ""
+		sess.LastLesson = -1
 	}
 	sess.Phase = phaseStudying
 	sess.Week = week
 	sess.Activity = nil
-	t.prepareProblems(tc.sessionID, sess, w, p.Major, p.Weeks[week])
+	t.prepareProblems(tc.sessionID, sess, w, sess.Major)
 	log.Printf("[tutor] week_started session=%s week=%d", shortID(tc.sessionID), week)
-	return t.say(sess, tc.msg, weekPlanMessage(w, p.Weeks[week]))
 }
 
 // studyTurn handles a turn while the student is studying a week.
 func (t *tutor) studyTurn(tc *turnContext) string {
 	sess := tc.sess
 	w := weekInfo(sess.Week)
-	p, err := t.store.get(sess.StudyCode)
-	if err != nil || w == nil {
-		log.Printf("[tutor] profile_unavailable session=%s err=%v", shortID(tc.sessionID), err)
-		t.resetSession(sess)
-		return welcomeMessage
+	if w == nil {
+		resetSession(sess)
+		return t.say(sess, tc.msg, welcomeMessage())
 	}
 	// Once the turn is answered, have a problem of each kind ready for this week. Doing it
 	// after the turn keeps a request for a problem from waiting on a draft started just now.
 	defer func() {
 		if sess.Phase == phaseStudying && sess.Week == w.Number {
-			t.prepareProblems(tc.sessionID, sess, w, p.Major, p.Weeks[w.Number])
+			t.prepareProblems(tc.sessionID, sess, w, sess.Major)
 		}
 	}()
-	in, ok := parseAction(tc.action)
-	if !ok {
-		in = detectIntent(tc.msg, sess.Activity.open())
-	}
-	if tc.restored && in.Kind == intentNone {
-		return t.say(sess, tc.msg, serverRestartedMessage)
-	}
+	in := tc.in
 	if in.Kind == intentNextLesson && in.MoveOn && sess.Activity.isPractice() {
 		in = intent{Kind: intentAnother}
 	}
-	log.Printf("[tutor] intent session=%s week=%d intent=%q practice=%s activity=%s",
-		shortID(tc.sessionID), w.Number, in.Kind, in.Practice, activityName(sess.Activity))
 
 	switch in.Kind {
-	case intentWeek:
-		return t.startWeek(tc, in.Week)
-	case intentWeekMenu:
-		sess.Phase = phaseChooseWeek
-		return t.say(sess, tc.msg, chooseWeekMessage(p))
-	case intentPlan:
-		return t.say(sess, tc.msg, weekPlanMessage(w, p.Weeks[w.Number]))
+	case intentOverview:
+		return t.say(sess, tc.msg, weekOverviewMessage(w, sess.Major))
 	case intentGuide:
 		return t.say(sess, tc.msg, interviewGuideMessage(w))
-	case intentProgress:
-		return t.say(sess, tc.msg, progressMessage(p, w.Number))
-	case intentStudyCode:
-		return t.say(sess, tc.msg, studyCodeMessage(p))
 	case intentHelp:
 		return t.say(sess, tc.msg, helpMessage(w))
 	case intentLesson, intentNextLesson:
-		return t.teachLesson(tc, w, p, t.lessonToTeach(tc, w, p, in), in.Lesson > 0)
+		if in.Lesson > 0 {
+			return t.teachLesson(tc, w, in.Lesson-1, true)
+		}
+		return t.teachLesson(tc, w, sess.LastLesson+1, false)
 	case intentPractice:
 		kind := in.Practice
-		if kind == "" && in.Difficulty != difficultyStandard && sess.LastPracticeKind != "" {
+		if kind == "" {
 			kind = sess.LastPracticeKind
 		}
 		if kind == "" {
-			kind = suggestedPractice(w, p.Weeks[w.Number])
+			kind = kindConcept
 		}
-		return t.startPractice(tc, w, p, kind, in.Difficulty)
+		return t.startPractice(tc, w, kind, in.Difficulty)
 	case intentAnother:
 		kind := sess.LastPracticeKind
 		if kind == "" {
-			kind = suggestedPractice(w, p.Weeks[w.Number])
+			kind = kindConcept
 		}
-		return t.startPractice(tc, w, p, kind, in.Difficulty)
+		return t.startPractice(tc, w, kind, in.Difficulty)
 	case intentHint:
 		if !sess.Activity.open() {
 			return t.say(sess, tc.msg, noProblemOpenMessage(w))
 		}
-		return t.giveHint(tc, w, p)
+		return t.giveHint(tc, w)
 	case intentSolution:
 		if !sess.Activity.isPractice() {
 			return t.say(sess, tc.msg, noProblemOpenMessage(w))
 		}
-		return t.showSolution(tc, w, p)
+		return t.showSolution(tc, w)
 	}
 
 	switch a := sess.Activity; {
 	case a.isPractice():
-		return t.practiceReply(tc, w, p)
+		return t.practiceReply(tc, w)
 	case a != nil && a.Kind == kindLesson:
-		return t.lessonReply(tc, w, p)
+		return t.lessonReply(tc, w)
 	}
-	return t.chat(tc, w, p)
+	return t.chat(tc, w)
 }
 
 // say records a server-written reply in the conversation history and returns it.
@@ -459,50 +445,19 @@ func (t *tutor) say(sess *tutorSession, user, reply string) string {
 	return reply
 }
 
-// lessonToTeach picks the lesson for "teach me" or "next lesson": the one asked for, else
-// the next one not yet done after the current lesson (which moving on marks done).
-func (t *tutor) lessonToTeach(tc *turnContext, w *weekContent, p studentProfile, in intent) int {
-	if in.Lesson > 0 {
-		return in.Lesson - 1
-	}
-	a := tc.sess.Activity
-	if a == nil || a.Kind != kindLesson {
-		return nextLessonIndex(w, p.Weeks[w.Number])
-	}
-	t.markLessonDone(tc, w, a.Lesson)
-	updated, err := t.store.get(tc.sess.StudyCode)
-	if err != nil {
-		return a.Lesson + 1
-	}
-	wp := updated.Weeks[w.Number]
-	for j := a.Lesson + 1; j < len(w.Lessons); j++ {
-		if wp == nil || !wp.lessonDone(j) {
-			return j
-		}
-	}
-	return nextLessonIndex(w, wp)
-}
-
-// teachLesson teaches lesson i. asked is set when the student named the lesson, so a
-// lesson already done is taught again rather than skipped.
-func (t *tutor) teachLesson(tc *turnContext, w *weekContent, p studentProfile, i int, asked bool) string {
+// teachLesson teaches lesson i of the week. asked is set when the student named the
+// lesson; otherwise i is the one after the last lesson taught.
+func (t *tutor) teachLesson(tc *turnContext, w *weekContent, i int, asked bool) string {
 	sess := tc.sess
-	wp := p.Weeks[w.Number]
-	if asked && (i < 0 || i >= len(w.Lessons)) {
-		return t.say(sess, tc.msg, fmt.Sprintf("This week has %d lessons. Ask for one by number, from `lesson 1` to `lesson %d`.", len(w.Lessons), len(w.Lessons)))
-	}
 	if i < 0 || i >= len(w.Lessons) {
-		sess.Activity = nil
-		return t.say(sess, tc.msg, allLessonsDoneMessage(w, wp))
-	}
-	var done []string
-	for j := range w.Lessons {
-		if j != i && wp != nil && wp.lessonDone(j) {
-			done = append(done, w.Lessons[j].Title)
+		if asked {
+			return t.say(sess, tc.msg, fmt.Sprintf("%s has %d lessons. Ask for one by number, from `lesson 1` to `lesson %d`.", w.Title, len(w.Lessons), len(w.Lessons)))
 		}
+		sess.Activity = nil
+		return t.say(sess, tc.msg, lastLessonMessage(w))
 	}
-	base := tutorBasePrompt(w, p.Major)
-	res, err := t.llm.call(context.Background(), callLesson, lessonMessages(base, w, i, p.Major, done))
+	base := tutorBasePrompt(w, sess.Major)
+	res, err := t.llm.call(context.Background(), callLesson, lessonMessages(base, w, i, sess.Major))
 	logCall(tc.sessionID, callLesson, res, err)
 	content := strings.TrimSpace(res.Content)
 	if err != nil || content == "" {
@@ -510,6 +465,7 @@ func (t *tutor) teachLesson(tc *turnContext, w *weekContent, p studentProfile, i
 	}
 	sess.Activity = &activity{Kind: kindLesson, Lesson: i, Title: w.Lessons[i].Title}
 	sess.Activity.addMessage("assistant", content)
+	sess.LastLesson = i
 	footer := fmt.Sprintf("*Lesson %d of %d. Answer the quick check, ask a question, or choose **Next lesson**.*", i+1, len(w.Lessons))
 	if i == len(w.Lessons)-1 {
 		footer = fmt.Sprintf("*Lesson %d of %d, the last one this week. Answer the quick check or ask a question, then try some practice.*", i+1, len(w.Lessons))
@@ -517,21 +473,10 @@ func (t *tutor) teachLesson(tc *turnContext, w *weekContent, p studentProfile, i
 	return t.say(sess, tc.msg, content+"\n\n---\n"+footer)
 }
 
-func (t *tutor) markLessonDone(tc *turnContext, w *weekContent, i int) {
-	if _, err := t.store.update(tc.sess.StudyCode, func(p *studentProfile) {
-		wp := p.week(w.Number)
-		wp.markLessonDone(i)
-		wp.LastStudied = time.Now()
-	}); err != nil {
-		log.Printf("[tutor] save_failed session=%s err=%v", shortID(tc.sessionID), err)
-	}
-}
-
-func (t *tutor) lessonReply(tc *turnContext, w *weekContent, p studentProfile) string {
+func (t *tutor) lessonReply(tc *turnContext, w *weekContent) string {
 	a := tc.sess.Activity
-	t.markLessonDone(tc, w, a.Lesson)
 	a.addMessage("user", tc.msg)
-	res, err := t.llm.call(context.Background(), callChat, lessonReplyMessages(tutorBasePrompt(w, p.Major), a))
+	res, err := t.llm.call(context.Background(), callChat, lessonReplyMessages(tutorBasePrompt(w, tc.sess.Major), a))
 	logCall(tc.sessionID, callChat, res, err)
 	reply := strings.TrimSpace(res.Content)
 	if err != nil || reply == "" {
@@ -542,14 +487,14 @@ func (t *tutor) lessonReply(tc *turnContext, w *weekContent, p studentProfile) s
 	return t.say(tc.sess, tc.msg, reply)
 }
 
-func (t *tutor) chat(tc *turnContext, w *weekContent, p studentProfile) string {
+func (t *tutor) chat(tc *turnContext, w *weekContent) string {
 	sess := tc.sess
 	var done *activity
 	if sess.Activity.isPractice() {
 		done = sess.Activity
 	}
 	history := append(append([]chatMessage(nil), sess.History...), chatMessage{Role: "user", Content: tc.msg})
-	res, err := t.llm.call(context.Background(), callChat, chatMessages(tutorBasePrompt(w, p.Major), history, done))
+	res, err := t.llm.call(context.Background(), callChat, chatMessages(tutorBasePrompt(w, sess.Major), history, done))
 	logCall(tc.sessionID, callChat, res, err)
 	reply := strings.TrimSpace(res.Content)
 	if err != nil || reply == "" {
@@ -569,26 +514,21 @@ func firstStage(kind string) string {
 	return stageAnswer
 }
 
-func (t *tutor) startPractice(tc *turnContext, w *weekContent, p studentProfile, kind, difficulty string) string {
+func (t *tutor) startPractice(tc *turnContext, w *weekContent, kind, difficulty string) string {
 	sess := tc.sess
 	if !w.hasPractice(kind) {
 		return t.say(sess, tc.msg, noWeek1PracticeMessage(kind))
 	}
-	wp := p.Weeks[w.Number]
 	var problem generatedProblem
 	ok := false
 	if difficulty == difficultyStandard {
-		problem, ok = sess.takePrepared(kind, w.Number, p.Major)
+		problem, ok = sess.takePrepared(kind, w.Number, sess.Major)
 	}
 	source := "prepared"
 	if !ok {
 		source = "live"
-		var avoid []string
-		if wp != nil {
-			avoid = wp.recentTitles(kind, 6)
-		}
 		var err error
-		problem, err = t.generateProblem(context.Background(), tc.sessionID, callProblem, w, kind, p.Major, difficulty, avoid)
+		problem, err = t.generateProblem(context.Background(), tc.sessionID, callProblem, w, kind, sess.Major, difficulty, sess.recentProblemTitles(w.Number, kind))
 		if err != nil {
 			log.Printf("[tutor] problem_failed session=%s kind=%s err=%v", shortID(tc.sessionID), kind, err)
 			return t.say(sess, tc.msg, "Sorry, I couldn't put a practice problem together just now. Please try again in a moment.")
@@ -597,27 +537,18 @@ func (t *tutor) startPractice(tc *turnContext, w *weekContent, p studentProfile,
 	log.Printf("[tutor] problem_served session=%s week=%d kind=%s difficulty=%q source=%s title=%q",
 		shortID(tc.sessionID), w.Number, kind, difficulty, source, problem.Title)
 
-	rec := practiceRecord{ID: newRecordID(), Kind: kind, Title: problem.Title, StartedAt: time.Now()}
-	updated, err := t.store.update(sess.StudyCode, func(p *studentProfile) {
-		wp := p.week(w.Number)
-		wp.addRecord(rec)
-		wp.LastStudied = time.Now()
-	})
-	if err != nil {
-		log.Printf("[tutor] save_failed session=%s err=%v", shortID(tc.sessionID), err)
-	}
+	sess.addRecentTitle(w.Number, kind, problem.Title)
 	sess.Activity = &activity{
 		Kind:      kind,
 		Title:     problem.Title,
 		Problem:   problem.Problem,
 		Reference: problem.Reference,
 		Stage:     firstStage(kind),
-		RecordID:  rec.ID,
 	}
 	sess.Activity.addMessage("assistant", problem.Problem)
 	sess.LastPracticeKind = kind
 	// Have the next one of this kind ready.
-	t.prepareProblems(tc.sessionID, sess, w, p.Major, updated.Weeks[w.Number], kind)
+	t.prepareProblems(tc.sessionID, sess, w, sess.Major, kind)
 
 	heading := "### " + practiceEmoji(kind) + " " + practiceLabel(w.Number, kind) + ": " + problem.Title
 	switch difficulty {
@@ -628,14 +559,6 @@ func (t *tutor) startPractice(tc *turnContext, w *weekContent, p studentProfile,
 	}
 	footer := "*Ask for a **hint** any time, or the **solution** if you get stuck.*"
 	return t.say(sess, tc.msg, heading+"\n\n"+problem.Problem+"\n\n---\n"+footer)
-}
-
-func newRecordID() string {
-	b := make([]byte, 6)
-	if _, err := rand.Read(b); err != nil {
-		return time.Now().Format("150405.000000")
-	}
-	return hex.EncodeToString(b)
 }
 
 // nextStage moves a practice problem on after a rated answer.
@@ -659,14 +582,13 @@ func nextStage(a *activity, codePasted bool) string {
 	return stageDone
 }
 
-func (t *tutor) practiceReply(tc *turnContext, w *weekContent, p studentProfile) string {
+func (t *tutor) practiceReply(tc *turnContext, w *weekContent) string {
 	sess := tc.sess
 	a := sess.Activity
 	codePasted := w.Number > 1 && looksLikeCode(tc.msg)
 	a.addMessage("user", tc.msg)
-	spec := callFeedback
-	res, err := t.llm.call(context.Background(), spec, feedbackMessages(tutorBasePrompt(w, p.Major), w, a, codePasted))
-	logCall(tc.sessionID, spec, res, err)
+	res, err := t.llm.call(context.Background(), callFeedback, feedbackMessages(tutorBasePrompt(w, sess.Major), w, a, codePasted))
+	logCall(tc.sessionID, callFeedback, res, err)
 	reply, level := splitLevel(res.Content)
 	if err != nil || reply == "" {
 		a.Messages = a.Messages[:len(a.Messages)-1]
@@ -674,37 +596,22 @@ func (t *tutor) practiceReply(tc *turnContext, w *weekContent, p studentProfile)
 	}
 	a.addMessage("assistant", reply)
 
+	// A question or a request for help isn't rated, and leaves the problem where it was.
 	wasOpen := a.open()
 	if wasOpen && (level != "" || (a.Stage == stageCode && codePasted)) {
 		a.Stage = nextStage(a, codePasted)
 	}
 	log.Printf("[tutor] feedback session=%s kind=%s level=%q stage=%s code=%v", shortID(tc.sessionID), a.Kind, level, a.Stage, codePasted)
-	if wasOpen {
-		if _, err := t.store.update(sess.StudyCode, func(p *studentProfile) {
-			wp := p.week(w.Number)
-			wp.LastStudied = time.Now()
-			// A question or a request for help is not an attempt; only rated answers count.
-			if rec := wp.record(a.RecordID); rec != nil && level != "" {
-				rec.Attempts++
-				rec.Level = level
-			}
-		}); err != nil {
-			log.Printf("[tutor] save_failed session=%s err=%v", shortID(tc.sessionID), err)
-		}
-	}
 	if wasOpen && a.Stage == stageDone {
-		updated, err := t.store.get(sess.StudyCode)
-		if err == nil {
-			reply += "\n\n---\n*" + practiceLabel(w.Number, a.Kind) + " finished. 🎯 Readiness for " + strings.SplitN(w.Title, " - ", 2)[0] + ": **" + weekReadiness(w, updated.Weeks[w.Number]).Label + "**.*"
-		}
+		reply += "\n\n---\n*✅ " + practiceLabel(w.Number, a.Kind) + " finished. Try **Another one**, a different part of the interview, or any lesson.*"
 	}
 	return t.say(sess, tc.msg, reply)
 }
 
-func (t *tutor) giveHint(tc *turnContext, w *weekContent, p studentProfile) string {
+func (t *tutor) giveHint(tc *turnContext, w *weekContent) string {
 	sess := tc.sess
 	a := sess.Activity
-	res, err := t.llm.call(context.Background(), callHint, hintMessages(tutorBasePrompt(w, p.Major), w, a))
+	res, err := t.llm.call(context.Background(), callHint, hintMessages(tutorBasePrompt(w, sess.Major), w, a))
 	logCall(tc.sessionID, callHint, res, err)
 	reply := strings.TrimSpace(res.Content)
 	if err != nil || reply == "" {
@@ -713,20 +620,13 @@ func (t *tutor) giveHint(tc *turnContext, w *weekContent, p studentProfile) stri
 	a.Hints++
 	a.addMessage("user", tc.msg)
 	a.addMessage("assistant", reply)
-	if _, err := t.store.update(sess.StudyCode, func(p *studentProfile) {
-		if rec := p.week(w.Number).record(a.RecordID); rec != nil {
-			rec.HintsUsed++
-		}
-	}); err != nil {
-		log.Printf("[tutor] save_failed session=%s err=%v", shortID(tc.sessionID), err)
-	}
 	return t.say(sess, tc.msg, "💡 "+reply)
 }
 
-func (t *tutor) showSolution(tc *turnContext, w *weekContent, p studentProfile) string {
+func (t *tutor) showSolution(tc *turnContext, w *weekContent) string {
 	sess := tc.sess
 	a := sess.Activity
-	res, err := t.llm.call(context.Background(), callSolution, solutionMessages(tutorBasePrompt(w, p.Major), w, a))
+	res, err := t.llm.call(context.Background(), callSolution, solutionMessages(tutorBasePrompt(w, sess.Major), w, a))
 	logCall(tc.sessionID, callSolution, res, err)
 	reply := strings.TrimSpace(res.Content)
 	if err != nil || reply == "" {
@@ -735,13 +635,6 @@ func (t *tutor) showSolution(tc *turnContext, w *weekContent, p studentProfile) 
 	a.Stage = stageDone
 	a.addMessage("user", tc.msg)
 	a.addMessage("assistant", reply)
-	if _, err := t.store.update(sess.StudyCode, func(p *studentProfile) {
-		if rec := p.week(w.Number).record(a.RecordID); rec != nil {
-			rec.SolutionShown = true
-		}
-	}); err != nil {
-		log.Printf("[tutor] save_failed session=%s err=%v", shortID(tc.sessionID), err)
-	}
 	return t.say(sess, tc.msg, reply)
 }
 

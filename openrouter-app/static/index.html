@@ -27,54 +27,37 @@
   </div>
 
   <div id="app" class="layout app-locked">
-    <aside id="sidebar" class="sidebar" aria-label="Your progress">
+    <aside id="sidebar" class="sidebar" aria-label="Weeks and lessons">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true">🐍</span>
         <div>
           <h1>iPyTutor</h1>
-          <p class="tagline">Weekly Python practice for your iPyIntervu interview</p>
+          <p class="tagline">Python practice for your iPyIntervu interviews</p>
         </div>
       </div>
 
-      <section id="intro-card" class="card">
-        <p>Tell the tutor your major to get a <strong>study code</strong>, then pick the week you're studying.</p>
-        <p class="muted">Your progress is saved under your study code, so you can come back every week, on any device.</p>
+      <section class="card">
+        <label class="card-label" for="week-select">Week</label>
+        <select id="week-select">
+          <option value="">Choose a week…</option>
+        </select>
+        <div id="lessons-block" class="hidden">
+          <div class="card-label">Lessons</div>
+          <ol id="lesson-list" class="lesson-list"></ol>
+        </div>
+        <p id="major-line" class="muted small hidden"></p>
       </section>
 
-      <section id="profile-card" class="card hidden">
-        <div class="card-label">Study code</div>
-        <div class="study-code-row">
-          <code id="study-code"></code>
-          <button type="button" id="copy-code" class="ghost small">Copy</button>
-        </div>
-        <p id="major-line" class="muted small"></p>
-        <button type="button" id="switch-student" class="link small">Not you? Use a different study code</button>
-      </section>
-
-      <section id="week-card" class="card hidden">
-        <label class="card-label" for="week-select">Studying</label>
-        <select id="week-select"></select>
-
-        <div class="meter">
-          <div class="meter-row"><span>📖 Lessons</span><span id="lessons-count"></span></div>
-          <div class="bar" aria-hidden="true"><div id="lessons-bar" class="bar-fill"></div></div>
-        </div>
-
-        <div class="card-label">Interview parts</div>
-        <ul id="parts" class="parts"></ul>
-
-        <div class="readiness-row">
-          <span class="card-label">Readiness</span>
-          <span id="readiness" class="badge"></span>
-        </div>
-        <p id="next-step" class="next-step"></p>
+      <section class="card">
+        <p>Study <strong>any week or lesson</strong>, in any order. The tutor assumes you know the weeks before it.</p>
+        <p class="muted">Every answer gets feedback, an <strong>Interview check</strong>, and advice on preparing for iPyIntervu. Nothing is saved between visits.</p>
       </section>
     </aside>
 
     <main class="chat">
       <header class="chat-header">
         <span class="mobile-brand"><span aria-hidden="true">🐍</span> iPyTutor</span>
-        <button type="button" id="toggle-sidebar" class="ghost small" aria-controls="sidebar" aria-expanded="false">Progress</button>
+        <button type="button" id="toggle-sidebar" class="ghost small" aria-controls="sidebar" aria-expanded="false">Weeks &amp; lessons</button>
       </header>
 
       <section id="messages" class="messages" aria-live="polite"></section>

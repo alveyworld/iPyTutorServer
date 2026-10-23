@@ -17,12 +17,11 @@ const (
 	intentAnother    intentKind = "another"
 	intentHint       intentKind = "hint"
 	intentSolution   intentKind = "solution"
-	intentProgress   intentKind = "progress"
 	intentGuide      intentKind = "guide"
-	intentPlan       intentKind = "plan"
+	intentOverview   intentKind = "overview"
 	intentWeek       intentKind = "week"
 	intentWeekMenu   intentKind = "weeks"
-	intentStudyCode  intentKind = "study_code"
+	intentSetMajor   intentKind = "major"
 	intentHelp       intentKind = "help"
 )
 
@@ -34,23 +33,35 @@ const (
 
 type intent struct {
 	Kind intentKind
-	// Practice is the practice format for intentPractice; "" picks the one most needed.
+	// Practice is the practice format for intentPractice; "" means the last one used.
 	Practice   string
-	Week       int
 	Difficulty string
-	// Lesson is a lesson number (from 1) the student asked for by number.
+	// Week is the week to study, for intentWeek.
+	Week int
+	// Lesson is a lesson number (from 1) the student asked for, with intentWeek or
+	// intentLesson.
 	Lesson int
+	// Teach starts the week's first lesson after switching weeks ("teach me for loops").
+	Teach bool
+	// Topic marks a week chosen by naming its topic ("study lists") rather than its number.
+	Topic bool
 	// MoveOn marks a bare "next" or "continue", whose meaning depends on the activity.
 	MoveOn bool
 }
 
-// parseAction reads the action a UI button sends ("practice:code", "week:5", ...).
+// parseAction reads the action a UI button sends ("practice:code", "week:5", "lesson:3").
 func parseAction(action string) (intent, bool) {
 	name, arg, _ := strings.Cut(strings.TrimSpace(action), ":")
 	switch intentKind(name) {
-	case intentLesson, intentNextLesson, intentHint, intentSolution, intentProgress,
-		intentGuide, intentPlan, intentWeekMenu, intentStudyCode, intentHelp:
+	case intentNextLesson, intentHint, intentSolution, intentGuide, intentOverview, intentWeekMenu, intentHelp:
 		return intent{Kind: intentKind(name)}, true
+	case intentLesson:
+		if arg == "" {
+			return intent{Kind: intentLesson}, true
+		}
+		if n, err := strconv.Atoi(arg); err == nil && n > 0 {
+			return intent{Kind: intentLesson, Lesson: n}, true
+		}
 	case intentAnother:
 		return intent{Kind: intentAnother, Difficulty: difficultyWord(arg)}, true
 	case intentPractice:
@@ -75,23 +86,24 @@ var (
 	politePrefix      = regexp.MustCompile(`^(?:(?:ok(?:ay)?|hey|hi|please|so|um|alright|great|thanks|thank you)[,!. ]+)+`)
 	politeSuffix      = regexp.MustCompile(`[,. ]+(?:please|thanks|thank you|now)$`)
 	requestPrefix     = regexp.MustCompile(`^(?:(?:can|could|may) (?:i|you|we) (?:get|have|see|do|try|give me)|give me|show me|i(?:'d| would) like|i want|i need|let'?s (?:do|try|see|get)?|let me (?:see|try|have)|can you|could you|time for|start|begin|do|try)\s+`)
-	lessonNumber      = regexp.MustCompile(`^(?:(?:re)?teach (?:me )?|repeat |redo |go back to |back to )?lesson (\d{1,2})$`)
-	weekCommand       = regexp.MustCompile(`^(?:(?:switch|change|move|go) (?:to |over to )?|study |studying |start |open |back to )?week (\d{1,2})$`)
+	weekCommand       = regexp.MustCompile(`^(?:(?:switch|change|move|go|jump|skip) (?:to |over to |ahead to |back to )?|study |studying |start |open |back to )?week (\d{1,2})(?:,? (?:and )?(?:lesson|l) ?(\d{1,2}))?$`)
+	lessonOfWeek      = regexp.MustCompile(`^(?:(?:re)?teach (?:me )?|study |open |go to )?lesson (\d{1,2}) (?:of|in|from|for) week (\d{1,2})$`)
+	lessonNumber      = regexp.MustCompile(`^(?:(?:re)?teach (?:me )?|repeat |redo |go back to |back to |go to |open |study |skip to |jump to )?lesson (\d{1,2})$`)
+	topicCommand      = regexp.MustCompile(`^(?:to )?(study|learn|learn about|teach me|teach me about|i'?m studying|i'?m learning|switch to|go to|move on to|open|let'?s study|let'?s learn)\s+(?:about\s+)?(?:the\s+)?(.+)$`)
+	majorCommand      = regexp.MustCompile(`^(?:my major is|i'?m majoring in|i am majoring in|i major in|major:?|set my major to|change my major to)\s+\S|^i(?:'m| am) an? .+ (?:major|student)$`)
 	anotherCommand    = regexp.MustCompile(`^(?:another(?: one)?|one more|more|again|next (?:one|problem|question)|(?:a )?new (?:one|problem|question)|(?:an? )?(easier|harder|simpler|tougher|more difficult|more challenging) (?:one|problem|question))$`)
 	practiceCommand   = regexp.MustCompile(`^((?:a|an|one|another|some|more|new|next|the next|one more)\s+)?(?:(easier|harder|simpler|tougher|more difficult|more challenging)\s+)?(concept(?:ual)?(?: question)?|decomposition(?: problem| question| practice| exercise)?|code(?: problem)?|coding(?: problem| question| exercise| challenge)?|programming (?:problem|exercise)|bug(?: hunt| hunting| problem)?|debugging(?: problem| practice| exercise)?|practice(?: problem| question)?|problem|exercise|quiz(?: me)?)s?$`)
 	hintCommand       = regexp.MustCompile(`^(?:a |another |one more |small |little )*hints?$|^(?:help|i'?m stuck|stuck|nudge)$`)
 	solutionCommand   = regexp.MustCompile(`^(?:the |a )?(?:solution|answer|worked solution|full solution|model answer)$|^(?:i give up|give up|reveal(?: it| the answer| the solution)?|what'?s the answer)$`)
-	lessonCommand     = regexp.MustCompile(`^(?:teach me|lessons?|teach|start (?:the )?lessons?|a lesson|this week'?s lesson|continue lessons?|continue (?:the )?lesson)$`)
+	lessonCommand     = regexp.MustCompile(`^(?:teach me|lessons?|teach|start (?:the )?lessons?|a lesson|this week'?s lessons?|continue lessons?|continue (?:the )?lesson)$`)
 	nextLessonCommand = regexp.MustCompile(`^(?:the )?next lesson$`)
 	// moveOnCommand is "next" or "continue": the next lesson during lessons, otherwise
 	// another problem of the same kind.
-	moveOnCommand    = regexp.MustCompile(`^(?:next|continue|keep going|go on)$`)
-	progressCommand  = regexp.MustCompile(`^(?:my )?(?:progress|readiness|stats|score|scores)$|^(?:how am i doing|am i ready(?: for the interview)?|how ready am i)$`)
-	guideCommand     = regexp.MustCompile(`^(?:the )?interview(?: guide| tips| prep| help| format| info)?$|^(?:how does the interview work|what'?s (?:on|in) the interview|interview tips)$`)
-	planCommand      = regexp.MustCompile(`^(?:the |this week'?s |my |weekly |week )?(?:plan|study plan|overview|outline)$`)
-	weekMenuCommand  = regexp.MustCompile(`^(?:change|switch|pick|choose|another|a different|other) week$|^(?:weeks|week list|list weeks|all weeks)$`)
-	studyCodeCommand = regexp.MustCompile(`^(?:what'?s |what is )?(?:my )?(?:study )?code$`)
-	helpCommand      = regexp.MustCompile(`^(?:help me|what can you do|commands|options|menu|how does this work|how do i use this)$`)
+	moveOnCommand   = regexp.MustCompile(`^(?:next|continue|keep going|go on)$`)
+	guideCommand    = regexp.MustCompile(`^(?:the )?interview(?: guide| tips| prep| help| format| info)?$|^(?:how does the interview work|what'?s (?:on|in) the interview|interview tips)$`)
+	overviewCommand = regexp.MustCompile(`^(?:the |this week'?s |week |weekly )?(?:plan|study plan|overview|outline|lesson list|list of lessons|topics)$|^what'?s (?:in|on) this week$`)
+	weekMenuCommand = regexp.MustCompile(`^(?:change|switch|pick|choose|another|a different|other) week$|^(?:weeks|week list|list weeks|all weeks)$`)
+	helpCommand     = regexp.MustCompile(`^(?:help me|what can you do|commands|options|menu|how does this work|how do i use this)$`)
 )
 
 // commandText normalizes a short message for command matching, or returns "" for a
@@ -120,13 +132,25 @@ func detectIntent(msg string, practicing bool) intent {
 		return intent{}
 	}
 	if m := weekCommand.FindStringSubmatch(s); m != nil {
-		if n, err := strconv.Atoi(m[1]); err == nil && weekInfo(n) != nil {
-			return intent{Kind: intentWeek, Week: n}
+		n, _ := strconv.Atoi(m[1])
+		lesson, _ := strconv.Atoi(m[2])
+		if weekInfo(n) != nil {
+			return intent{Kind: intentWeek, Week: n, Lesson: lesson}
+		}
+	}
+	if m := lessonOfWeek.FindStringSubmatch(s); m != nil {
+		lesson, _ := strconv.Atoi(m[1])
+		n, _ := strconv.Atoi(m[2])
+		if weekInfo(n) != nil {
+			return intent{Kind: intentWeek, Week: n, Lesson: lesson}
 		}
 	}
 	if m := lessonNumber.FindStringSubmatch(s); m != nil {
 		n, _ := strconv.Atoi(m[1])
 		return intent{Kind: intentLesson, Lesson: n}
+	}
+	if majorCommand.MatchString(s) {
+		return intent{Kind: intentSetMajor}
 	}
 	switch {
 	case hintCommand.MatchString(s):
@@ -140,16 +164,12 @@ func detectIntent(msg string, practicing bool) intent {
 		return intent{Kind: intentNextLesson}
 	case lessonCommand.MatchString(s):
 		return intent{Kind: intentLesson}
-	case progressCommand.MatchString(s):
-		return intent{Kind: intentProgress}
 	case guideCommand.MatchString(s):
 		return intent{Kind: intentGuide}
-	case planCommand.MatchString(s):
-		return intent{Kind: intentPlan}
+	case overviewCommand.MatchString(s):
+		return intent{Kind: intentOverview}
 	case weekMenuCommand.MatchString(s):
 		return intent{Kind: intentWeekMenu}
-	case studyCodeCommand.MatchString(s):
-		return intent{Kind: intentStudyCode}
 	case helpCommand.MatchString(s):
 		return intent{Kind: intentHelp}
 	}
@@ -161,6 +181,11 @@ func detectIntent(msg string, practicing bool) intent {
 	}
 	if m := practiceCommand.FindStringSubmatch(s); m != nil {
 		return practiceIntent(m[1], difficultyWord(m[2]), m[3])
+	}
+	if m := topicCommand.FindStringSubmatch(s); m != nil {
+		if sel, ok := matchWeekSelection(m[2]); ok {
+			return intent{Kind: intentWeek, Week: sel.CurrentWeekNumber, Topic: true, Teach: strings.HasPrefix(m[1], "teach")}
+		}
 	}
 	return intent{}
 }

@@ -7,8 +7,7 @@
 #
 # The OpenRouter key comes from OPENROUTER_API_KEY or ~/.openrouter-env. Login uses a
 # development RSA keypair kept in ~/.ipytutor-dev (created on first run, separate from
-# the production key); paste its public key into the login screen. Student progress is
-# kept in ~/.ipytutor-dev/data unless TUTOR_DATA_DIR is set.
+# the production key); paste its public key into the login screen.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -48,7 +47,6 @@ fi
 
 export OPENROUTER_API_KEY
 export AUTH_PRIVATE_KEY_FILE="$PRIVATE_KEY"
-export TUTOR_DATA_DIR="${TUTOR_DATA_DIR:-$DEV_DIR/data}"
 export PORT="${PORT:-8080}"
 export LISTEN_ADDR="127.0.0.1"
 # Local runs use plain http, so the session cookie can't be Secure.
@@ -57,7 +55,6 @@ export SECURE_COOKIES=false
 echo "Open http://localhost:$PORT and paste the public key from:"
 echo "  $PUBLIC_KEY"
 echo "(copy it with: pbcopy < $PUBLIC_KEY)"
-echo "Student progress: $TUTOR_DATA_DIR"
 echo "Logs appear below; [tutor] lines show each turn and model call. Ctrl-C stops the server."
 echo
 

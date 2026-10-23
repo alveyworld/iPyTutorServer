@@ -1,18 +1,19 @@
 package main
 
 import (
+	"fmt"
 	"sync"
 	"time"
 )
 
 // A tutorSession is one browser login's conversation with the tutor. It lives in memory
-// and is lost on a restart; the student's progress is in the progressStore, and the
-// browser sends the study code with each request so the session can be restored.
+// only: the tutor keeps no record of a student between visits, and a student can study
+// any week and lesson at any time.
 
 type tutorPhase string
 
 const (
-	// phaseWelcome waits for a major (new student) or a study code (returning student).
+	// phaseWelcome waits for the student's major or a week to study.
 	phaseWelcome    tutorPhase = "welcome"
 	phaseChooseWeek tutorPhase = "choose_week"
 	phaseStudying   tutorPhase = "studying"
@@ -35,7 +36,9 @@ const (
 const (
 	maxHistoryMessages  = 16
 	maxActivityMessages = 24
-	maxFailedCodeTries  = 5
+	// maxRecentTitles is how many problem titles per week and format are kept, so new
+	// problems in the same visit don't repeat them.
+	maxRecentTitles = 6
 )
 
 // activity is what the student is working on: a lesson or a practice problem.
@@ -49,7 +52,6 @@ type activity struct {
 	Reference string
 	Stage     string
 	Hints     int
-	RecordID  string
 	// Messages is the activity's own conversation, starting with the lesson or problem.
 	Messages []chatMessage
 }
@@ -74,22 +76,49 @@ type tutorSession struct {
 	// turnMu serializes the session's turns.
 	turnMu sync.Mutex
 
-	Phase     tutorPhase
-	StudyCode string
-	Week      int
-	Activity  *activity
+	Phase tutorPhase
+	// started is set once a page load or a turn has used the session. A turn on a session
+	// that never started, from a browser holding a conversation, follows a server restart.
+	started bool
+	// Major sets the field for examples and problems, as the interview does; optional.
+	Major    string
+	Week     int
+	Activity *activity
+	// LastLesson is the index of the latest lesson taught this week, for "next lesson";
+	// -1 when none has been.
+	LastLesson int
 	// LastPracticeKind is the format of the latest problem, for "another one".
-	LastPracticeKind  string
-	History           []chatMessage
-	FailedCodeLookups int
-	UpdatedAt         time.Time
+	LastPracticeKind string
+	// recentTitles holds the latest problem titles by week and format.
+	recentTitles map[string][]string
+	History      []chatMessage
+	UpdatedAt    time.Time
 
 	prepMu   sync.Mutex
 	prepared map[string]*preparedProblem
 }
 
 func newTutorSession() *tutorSession {
-	return &tutorSession{Phase: phaseWelcome, prepared: map[string]*preparedProblem{}}
+	return &tutorSession{Phase: phaseWelcome, LastLesson: -1, recentTitles: map[string][]string{}, prepared: map[string]*preparedProblem{}}
+}
+
+func titlesKey(week int, kind string) string {
+	return fmt.Sprintf("%d/%s", week, kind)
+}
+
+// addRecentTitle remembers a problem served this visit.
+func (s *tutorSession) addRecentTitle(week int, kind, title string) {
+	key := titlesKey(week, kind)
+	titles := append([]string{title}, s.recentTitles[key]...)
+	if len(titles) > maxRecentTitles {
+		titles = titles[:maxRecentTitles]
+	}
+	s.recentTitles[key] = titles
+}
+
+// recentProblemTitles lists this visit's problem titles for a week and format, newest first.
+func (s *tutorSession) recentProblemTitles(week int, kind string) []string {
+	return append([]string(nil), s.recentTitles[titlesKey(week, kind)]...)
 }
 
 func (s *tutorSession) remember(user, assistant string) {

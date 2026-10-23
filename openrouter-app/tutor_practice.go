@@ -136,7 +136,8 @@ type preparedProblem struct {
 }
 
 // prepareProblems starts background drafts for the week's practice formats that have none.
-func (t *tutor) prepareProblems(sessionID string, sess *tutorSession, w *weekContent, major string, wp *weekProgress, kinds ...string) {
+// The caller holds sess.turnMu.
+func (t *tutor) prepareProblems(sessionID string, sess *tutorSession, w *weekContent, major string, kinds ...string) {
 	if len(kinds) == 0 {
 		kinds = w.practiceKinds()
 	}
@@ -149,10 +150,7 @@ func (t *tutor) prepareProblems(sessionID string, sess *tutorSession, w *weekCon
 		if p := sess.prepared[kind]; p != nil && p.week == w.Number && p.major == major {
 			continue
 		}
-		var avoid []string
-		if wp != nil {
-			avoid = wp.recentTitles(kind, 6)
-		}
+		avoid := sess.recentProblemTitles(w.Number, kind)
 		p := &preparedProblem{week: w.Number, major: major, done: make(chan struct{})}
 		sess.prepared[kind] = p
 		go func(kind string) {

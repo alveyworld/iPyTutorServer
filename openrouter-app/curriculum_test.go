@@ -88,13 +88,17 @@ func TestInterviewGuideUsesRubric(t *testing.T) {
 
 func TestBasePromptStatesScope(t *testing.T) {
 	week2 := tutorBasePrompt(weekInfo(2), "Biology")
-	for _, want := range []string{"Biology", "Week 2 - Variables & Expressions", "week 2: variables", "Not yet learned: input() and type casting", "every value is set in the program", "<rubric>"} {
+	for _, want := range []string{"Biology", "Week 2 - Variables & Expressions", "already knows everything from the earlier weeks (week 1: problem decomposition", "This week they are learning: variables", "Not yet learned: input() and type casting", "every value is set in the program", "<rubric>"} {
 		if !strings.Contains(week2, want) {
 			t.Errorf("week 2 prompt missing %q", want)
 		}
 	}
 	if strings.Contains(week2, "week 3: input()") {
 		t.Error("week 2 prompt lists week 3 as learned")
+	}
+	week6 := tutorBasePrompt(weekInfo(6), "")
+	if !strings.Contains(week6, "week 5: if statements") || !strings.Contains(week6, "This week they are learning: for loops") {
+		t.Error("week 6 prompt should assume weeks 1-5 and teach for loops")
 	}
 	week1 := tutorBasePrompt(weekInfo(1), "Nursing")
 	if !strings.Contains(week1, "use no code") || strings.Contains(week1, "Bug hunt") {

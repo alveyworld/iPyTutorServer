@@ -41,8 +41,8 @@ func scopeRules(week int) string {
 		b.WriteString("This week is problem decomposition in everyday terms: breaking a real task into its input, the ordered steps of the process, and the output. The student has not learned any Python yet, so use no code and no programming syntax at all. You may say that this skill is how programmers plan programs.\n")
 		return b.String()
 	}
-	fmt.Fprintf(&b, "What the student has learned so far: %s.\n", learnedConceptsSummary(week))
-	b.WriteString("Use only those in explanations, examples, code and practice problems. Earlier weeks' ideas may support this week's concept.\n")
+	fmt.Fprintf(&b, "Assume the student already knows everything from the earlier weeks (%s) and build on it freely; don't re-teach it unless they ask. This week they are learning: %s.\n", learnedConceptsSummary(week-1), strings.Join(conceptsIntroducedByWeek[week], ", "))
+	b.WriteString("Use only those, earlier weeks plus this week, in explanations, examples, code and practice problems.\n")
 	var later []string
 	for _, d := range scopeDetectors {
 		if d.week > week && d.week != neverInScopeWeek {
@@ -78,15 +78,22 @@ func systemMessages(base, task string) []chatMessage {
 }
 
 // lessonMessages asks for one lesson of the week's plan.
-func lessonMessages(base string, w *weekContent, index int, major string, done []string) []chatMessage {
+func lessonMessages(base string, w *weekContent, index int, major string) []chatMessage {
 	l := w.Lessons[index]
 	var b strings.Builder
 	fmt.Fprintf(&b, "Teach lesson %d of %d for this week: %q.\nCover these points:\n", index+1, len(w.Lessons), l.Title)
 	for _, p := range l.Points {
 		b.WriteString("- " + p + "\n")
 	}
-	if len(done) > 0 {
-		fmt.Fprintf(&b, "The student has already worked through: %s. Build on those rather than re-teaching them.\n", strings.Join(done, "; "))
+	if w.Number > 1 {
+		b.WriteString("Assume the student knows everything from the earlier weeks; use it, but don't re-teach it.\n")
+	}
+	if index > 0 {
+		var earlier []string
+		for _, l := range w.Lessons[:index] {
+			earlier = append(earlier, l.Title)
+		}
+		fmt.Fprintf(&b, "Students can take lessons in any order, so they may not have done this week's earlier lessons (%s). If this lesson relies on one of them, recap that idea in a sentence.\n", strings.Join(earlier, "; "))
 	}
 	b.WriteString("\nWrite the lesson in this shape:\n")
 	fmt.Fprintf(&b, "## %s\n", l.Title)
@@ -114,9 +121,9 @@ func majorOrEveryday(major string) string {
 // lessonReplyMessages answers the student's reply to a lesson's quick check, or a question.
 func lessonReplyMessages(base string, a *activity) []chatMessage {
 	task := fmt.Sprintf("You just taught the lesson %q (the first assistant message below) and ended it with a quick check question. The student has replied.\n"+
-		"- If they answered the quick check, tell them whether they're right and why, and correct any misunderstanding kindly.\n"+
+		"- If they answered the quick check, evaluate it: say whether it's right and why, and correct any misunderstanding kindly. Then add one line starting \"**Interview prep:**\" with a concrete tip for how this idea comes up in the interview and how to answer it well (the reason to give, the edge case to mention, the wording that shows understanding).\n"+
 		"- If they asked a question, answer it with a small example.\n"+
-		"Keep it under 200 words. End by suggesting they ask another question, choose **Next lesson**, or try a practice problem.", a.Title)
+		"Keep it under 220 words. End by suggesting they ask another question, choose **Next lesson**, or try a practice problem.", a.Title)
 	return append(systemMessages(base, task), a.Messages...)
 }
 
@@ -127,6 +134,9 @@ func chatMessages(base string, history []chatMessage, done *activity) []chatMess
 	b.WriteString("The student is asking you something or chatting. Answer as their tutor: clearly, briefly (usually under 200 words), with a small example when it helps.\n")
 	b.WriteString("- If they paste code, explain what it does and point out any bugs, with the reason.\n")
 	b.WriteString("- If they ask you to write a whole program for them, help them plan it and write it together step by step instead; the interview asks them to explain every line.\n")
+	b.WriteString("- If they explain something in their own words or answer one of your questions, evaluate it as the interview would: what's right, what's missing, and whether it would likely be rated Not Ready Yet, Competent or Exceptional.\n")
+	b.WriteString("- When the topic would come up in the interview, add one line starting \"**Interview prep:**\" with a concrete tip for answering it well.\n")
+	b.WriteString("- If they ask about a topic from another week, answer it briefly and tell them they can study it properly by typing that week (for example `week 8`) or the topic (`lists`).\n")
 	b.WriteString("- If the message has nothing to do with Python, the course or preparing for the interview, reply briefly and steer back to this week's topic.\n")
 	b.WriteString("When it fits, end by suggesting one next step: a lesson (**Teach me**), a practice problem, or the **Interview guide**.")
 	if done != nil && done.isPractice() {
@@ -259,10 +269,11 @@ func feedbackMessages(base string, w *weekContent, a *activity, codePasted bool)
 How to reply:
 - Start with what they did well, specifically.
 - Then what's missing or wrong and why, kindly and concretely.
-- Include one line in this form: "**Interview check:** this would likely be rated **<Not Ready Yet, Competent or Exceptional>**: <what would raise it, or why it earns the top rating>." Judge against this week's rubric for an introductory student, not a professional: Exceptional when the answer meets the rubric's Exceptional description, Competent when it is correct but misses something Exceptional asks for, Not Ready Yet when it is wrong, confused or too vague. Using Python from later weeks is fine if they can explain it. Hints they needed are worth mentioning, but don't lower the rating for them.
+- Include one line in this form: "**Interview check:** this would likely be rated **<Not Ready Yet, Competent or Exceptional>**: <what would raise it, or why it earns the top rating>."
+- Then one line starting "**Interview prep:**" with one concrete thing to practice or do differently before the interview, based on this answer (for example the reason to state, the edge case to name, how to explain a line of code, or how to describe checking AI output). Judge against this week's rubric for an introductory student, not a professional: Exceptional when the answer meets the rubric's Exceptional description, Competent when it is correct but misses something Exceptional asks for, Not Ready Yet when it is wrong, confused or too vague. Using Python from later weeks is fine if they can explain it. Hints they needed are worth mentioning, but don't lower the rating for them.
 - End with the next step described above.
-- Keep it under about 250 words, plus any code.
-If the student didn't attempt an answer (they asked a question, said they're stuck, or wrote something off-topic), help them without giving the answer away, skip the Interview check, and invite them to try.
+- Keep it under about 280 words, plus any code.
+If the student didn't attempt an answer (they asked a question, said they're stuck, or wrote something off-topic), help them without giving the answer away, skip the Interview check and Interview prep lines, and invite them to try.
 After everything else, on its own last line, write exactly one of: LEVEL: not_ready, LEVEL: competent, LEVEL: exceptional, or LEVEL: none (none when there was no attempt to rate). The student never sees this line, and it must match your Interview check.`)
 	return append(systemMessages(base, b.String()), a.Messages...)
 }
@@ -310,6 +321,6 @@ func solutionMessages(base string, w *weekContent, a *activity) []chatMessage {
 	case a.Kind == kindBug:
 		b.WriteString("- A step-by-step way to track the bug down, where it is, why it causes the symptom, and the fixed line.\n")
 	}
-	b.WriteString("Then encourage them, and suggest trying **Another one** without the solution to lock it in. Keep it under about 350 words, plus code.")
+	b.WriteString("Then add one line starting \"**Interview prep:**\" with what to remember for a problem like this in the interview. Encourage them, and suggest trying **Another one** without the solution to lock it in. Keep it under about 380 words, plus code.")
 	return append(systemMessages(base, b.String()), a.Messages...)
 }

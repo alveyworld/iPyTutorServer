@@ -3,6 +3,3 @@ openrouter-app/ipytutor
 
 # Private keys and certificates
 *.pem
-
-# Student progress written by local runs (TUTOR_DATA_DIR defaults to ./data)
-openrouter-app/data/

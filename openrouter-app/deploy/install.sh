@@ -26,11 +26,6 @@ if ! id ipytutor >/dev/null 2>&1; then
   useradd --system --home /var/lib/ipytutor --shell /usr/sbin/nologin ipytutor
 fi
 
-# Student progress lives here (systemd's StateDirectory also creates it).
-mkdir -p /var/lib/ipytutor
-chown ipytutor:ipytutor /var/lib/ipytutor
-chmod 750 /var/lib/ipytutor
-
 cd "$ROOT_DIR"
 "$SCRIPT_DIR/build.sh" "$BINARY_SRC"
 

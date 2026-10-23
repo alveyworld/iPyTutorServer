@@ -291,31 +291,6 @@ func mustBugGuideSection(prefix string) string {
 	return section
 }
 
-// levelLabel is the interview's name for a level.
-func levelLabel(level string) string {
-	switch level {
-	case levelNotReady:
-		return "Not Ready Yet"
-	case levelCompetent:
-		return "Competent"
-	case levelExceptional:
-		return "Exceptional"
-	}
-	return ""
-}
-
-func levelRank(level string) int {
-	switch level {
-	case levelNotReady:
-		return 1
-	case levelCompetent:
-		return 2
-	case levelExceptional:
-		return 3
-	}
-	return 0
-}
-
 // practiceLabel names a practice format for students.
 func practiceLabel(week int, kind string) string {
 	switch kind {

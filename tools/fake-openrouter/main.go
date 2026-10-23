@@ -104,7 +104,7 @@ func reply(system, week string, msgs []message) (string, string) {
 		}
 		return "feedback", feedback
 	case strings.Contains(system, "quick check question"):
-		return "lesson_reply", "Yes, that's right! 🎉 `==` compares two values and gives `True` or `False`, while a single `=` stores a value in a variable. Mixing them up is one of the most common mistakes, so it's great that you've got it.\n\nAsk me anything about this lesson, choose **Next lesson**, or try a practice problem."
+		return "lesson_reply", "Yes, that's right! 🎉 `==` compares two values and gives `True` or `False`, while a single `=` stores a value in a variable. Mixing them up is one of the most common mistakes, so it's great that you've got it.\n\n**Interview prep:** if an interviewer shows you a condition, say out loud whether it compares or assigns, and what it evaluates to for a sample value.\n\nAsk me anything about this lesson, choose **Next lesson**, or try a practice problem."
 	}
 	return "chat", "Great question. Here's the short version:\n\n- A **condition** is an expression that's either `True` or `False`.\n- `if` runs its block only when the condition is `True`.\n\n```python\ntemperature = 39.2\nif temperature >= 38.0:\n    print(\"Fever: notify the nurse\")\n```\n\nThis prints the message because 39.2 is at least 38.0. Want to try a **Concept question** on this?"
 }
@@ -209,6 +209,7 @@ const feedback = `Nice work: you named the **input** clearly and your steps are 
 One thing to tighten: say *how* the processing decides between outcomes. Which value is checked first, and why does that order matter? Naming the boundary values (exactly 30 and exactly 60) would show you've thought about edge cases.
 
 **Interview check:** this would likely be rated **Competent**: to reach Exceptional, explain why you check the highest threshold first and mention what happens at the boundaries.
+**Interview prep:** practice saying your breakdown out loud in one breath: input, then each decision in order, then the output, naming exactly 30 and 60 as the boundaries you'd test.
 
 Next, write the Python for this and paste it here. You can use AI to help, but be ready to explain every line.
 LEVEL: competent`
@@ -229,5 +230,7 @@ elif score >= 60:
 else:
     grade = "Fail"
 ` + "```" + `
+
+**Interview prep:** in the bug part, say your plan before your guess: reproduce with 95, test the boundaries 59, 60, 89 and 90, then explain why only the first true branch runs.
 
 Try **Another one** without the solution to lock it in!`

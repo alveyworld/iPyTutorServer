@@ -159,21 +159,6 @@ select {
   text-transform: uppercase;
 }
 
-.study-code-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
-.study-code-row code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--accent);
-  overflow-wrap: anywhere;
-}
-
 select {
   width: 100%;
   padding: 0.5rem 0.6rem;
@@ -183,94 +168,35 @@ select {
   color: var(--text);
 }
 
-.meter {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  margin-top: 0.2rem;
-}
-
-.meter-row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.9rem;
-}
-
-.bar {
-  height: 0.45rem;
-  border-radius: 999px;
-  background: var(--none-bg);
-  overflow: hidden;
-}
-
-.bar-fill {
-  height: 100%;
-  width: 0;
-  border-radius: inherit;
-  background: var(--accent);
-  transition: width 0.3s ease;
-}
-
-.parts {
+.lesson-list {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.2rem;
 }
 
-.parts li,
-.readiness-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.9rem;
-}
-
-.readiness-row {
-  margin-top: 0.3rem;
-  padding-top: 0.6rem;
-  border-top: 1px solid var(--border);
-}
-
-.badge {
-  display: inline-block;
-  padding: 0.12rem 0.55rem;
-  border-radius: 999px;
-  font-size: 0.78rem;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.level-none {
-  background: var(--none-bg);
-  color: var(--muted);
-}
-
-.level-not-ready {
-  background: var(--not-ready-bg);
-  color: var(--not-ready);
-}
-
-.level-competent {
-  background: var(--competent-bg);
-  color: var(--competent);
-}
-
-.level-exceptional {
-  background: var(--exceptional-bg);
-  color: var(--exceptional);
-}
-
-.next-step {
-  font-size: 0.88rem;
-  color: var(--muted);
-}
-
-.next-step strong {
+.lesson-button {
+  width: 100%;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid transparent;
+  border-radius: 0.45rem;
+  background: transparent;
   color: var(--text);
+  font-size: 0.88rem;
+  line-height: 1.3;
+  text-align: left;
+}
+
+.lesson-button:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+
+.lesson-button.current {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 600;
 }
 
 /* ---------------------------------------------------------------- chat */

@@ -2,121 +2,90 @@ package main
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 )
 
 // Messages that need no model call are written by the server, so they are instant and
-// always accurate about the student's progress.
+// always match the course content.
 
-const welcomeMessage = "# Welcome to iPyTutor 👋\n\n" +
-	"I'm your Python study partner. Each week I'll teach you the key concept, give you practice problems like the ones in your **iPyIntervu** interview, and keep track of your progress so you know when you're ready.\n\n" +
-	"**New here?** Tell me your major (for example *Biology* or *Business*) and I'll set up your study profile.\n\n" +
-	"**Studied with me before?** Type your study code. It looks like `maple-river-4821`."
-
-const askMajorAgainMessage = "To get started, tell me your major, in a word or two (for example *Nursing* or *Economics*). " +
-	"If you've studied with me before, type your study code instead."
-
-const serverRestartedMessage = "Sorry, the tutor restarted and lost track of what we were doing just now. " +
-	"Your progress is saved, though. Pick what to do next with the buttons below."
-
-func studyCodeIssuedMessage(p studentProfile) string {
-	return fmt.Sprintf("Great, your study profile is set up for **%s**.\n\n"+
-		"Your study code is **`%s`**. Write it down! This browser will remember it, but you'll need it to pick up where you left off on another computer.\n\n"+
-		"Which week are you studying?\n\n%s\n\nType the week number (for example `5`).", p.Major, p.StudyCode, weekListMarkdown(p))
+// welcomeMessage greets a new visit and lists the weeks.
+func welcomeMessage() string {
+	return "# Welcome to iPyTutor 👋\n\n" +
+		"I'm your Python study partner for the **iPyIntervu** interviews. Pick **any week** and I'll teach its lessons, give you practice problems like the interview's, and tell you how each answer would likely be rated and how to prepare.\n\n" +
+		"**Tip:** tell me your major first (for example *Biology* or *Business*) and I'll set examples and problems in your field, like the interview does.\n\n" +
+		"Or jump straight in. Which week would you like to study?\n\n" + weekListMarkdown() +
+		"\n\nType a week number (for example `5`), a topic (`lists`), or a lesson (`week 6 lesson 2`)."
 }
 
-func unknownStudyCodeMessage(code string) string {
-	return fmt.Sprintf("I couldn't find the study code `%s`. Check it for typos and try again, or tell me your major to start a new profile.", code)
+const askMajorOrWeekMessage = "Tell me your major in a word or two (for example *Nursing* or *Economics*), or pick a week to study: type its number, such as `5`."
+
+const serverRestartedMessage = "Sorry, the tutor restarted and lost track of our conversation. Pick a week to carry on, for example `5` or `week 6 lesson 2`.\n\n"
+
+func majorSetMessage(major string, week int) string {
+	if week > 0 {
+		return fmt.Sprintf("Got it: from now on I'll set examples and practice problems in **%s**.", major)
+	}
+	return fmt.Sprintf("Great, I'll set examples and practice problems in **%s**.\n\nWhich week would you like to study?\n\n%s\n\nType a week number (for example `5`), a topic (`lists`), or a lesson (`week 6 lesson 2`).", major, weekListMarkdown())
 }
 
-const tooManyCodeTriesMessage = "That's too many study codes that didn't match. Reload the page to try again, or tell me your major to start a new profile."
-
-// weekListMarkdown lists the syllabus weeks, marking those the student has studied.
-func weekListMarkdown(p studentProfile) string {
+// weekListMarkdown lists the syllabus weeks.
+func weekListMarkdown() string {
 	lines := make([]string, 0, len(weeklyKeyConceptSelections))
 	for _, sel := range weeklyKeyConceptSelections {
-		line := "- " + sel.SelectedKeyConcept
-		if wp := p.Weeks[sel.CurrentWeekNumber]; wp != nil {
-			r := weekReadiness(weekInfo(sel.CurrentWeekNumber), wp)
-			line += " · *" + r.Label + "*"
-		}
-		lines = append(lines, line)
+		lines = append(lines, "- "+sel.SelectedKeyConcept)
 	}
 	return strings.Join(lines, "\n")
 }
 
-func chooseWeekMessage(p studentProfile) string {
-	return "Which week would you like to study?\n\n" + weekListMarkdown(p) + "\n\nType the week number (for example `5`)."
+func chooseWeekMessage() string {
+	return "Which week would you like to study?\n\n" + weekListMarkdown() + "\n\nType the week number (for example `5`), or a week and lesson (`week 6 lesson 2`)."
 }
 
-func invalidWeekMessage(p studentProfile) string {
-	return "That isn't one of the weeks.\n\n" + weekListMarkdown(p) + "\n\nType the week number (for example `5`)."
+func invalidWeekMessage() string {
+	return "That isn't one of the weeks.\n\n" + weekListMarkdown() + "\n\nType the week number (for example `5`)."
 }
 
-func welcomeBackMessage(p studentProfile) string {
-	var b strings.Builder
-	b.WriteString("# Welcome back 👋\n\n")
-	w := weekInfo(p.CurrentWeek)
-	if w == nil {
-		fmt.Fprintf(&b, "Your study code is `%s`.\n\n%s", p.StudyCode, chooseWeekMessage(p))
-		return b.String()
+// pickWeekFirstMessage asks for a week before a command that needs one.
+func pickWeekFirstMessage(lead string) string {
+	if lead == "" {
+		lead = "First, pick a week to study."
 	}
-	wp := p.Weeks[w.Number]
-	fmt.Fprintf(&b, "You're studying **%s**.\n\n", w.Title)
-	b.WriteString(weekStatusLines(w, wp))
-	fmt.Fprintf(&b, "\n**Next:** %s\n\nTo study a different week, pick it from the menu or type `week` and its number.", nextStep(w, wp))
-	return b.String()
+	return lead + "\n\n" + weekListMarkdown()
 }
 
-// weekStatusLines summarizes lessons and practice for a week as a short list.
-func weekStatusLines(w *weekContent, wp *weekProgress) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "- 📖 Lessons: %d of %d done\n", lessonsDone(w, wp), len(w.Lessons))
-	r := weekReadiness(w, wp)
-	for _, p := range r.Parts {
-		fmt.Fprintf(&b, "- %s %s: %s\n", practiceEmoji(p.Kind), practiceLabel(w.Number, p.Kind), partSummary(p))
-	}
-	fmt.Fprintf(&b, "- 🎯 Interview readiness: **%s**\n", r.Label)
-	return b.String()
-}
-
-func partSummary(p partStatus) string {
-	if p.Attempts == 0 {
-		return "not tried yet"
-	}
-	tries := "1 try"
-	if p.Attempts != 1 {
-		tries = fmt.Sprintf("%d tries", p.Attempts)
-	}
-	if p.Level == "" {
-		return tries
-	}
-	return fmt.Sprintf("latest **%s** (%s)", levelLabel(p.Level), tries)
-}
-
-func weekPlanMessage(w *weekContent, wp *weekProgress) string {
+// weekOverviewMessage introduces a week: its topics, lessons and practice.
+func weekOverviewMessage(w *weekContent, major string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s\n\n", w.Title)
 	if len(w.Topics) > 0 {
-		b.WriteString("**This week you'll learn:** " + strings.Join(w.Topics, "; ") + ".\n\n")
+		b.WriteString("**Topics:** " + strings.Join(w.Topics, "; ") + ".\n\n")
 	}
-	b.WriteString("**Your plan for the week**\n")
-	fmt.Fprintf(&b, "1. 📖 **Teach me**: work through the %d short lessons (%d done so far).\n", len(w.Lessons), lessonsDone(w, wp))
-	if w.Number == 1 {
-		b.WriteString("2. 💬 **Decomposition problem**: break real tasks from your field into input, process and output, like the interview asks.\n")
-		b.WriteString("3. 🎯 **Interview guide**: see exactly what earns Competent and Exceptional.\n\n")
-	} else {
-		b.WriteString("2. 💬 **Concept question**: explain how this week's Python works in a real situation.\n")
-		b.WriteString("3. 🧩 **Code problem**: break a problem down, then write the code and explain it.\n")
-		b.WriteString("4. 🐞 **Bug hunt**: track down the bug in a short program and explain how you found it.\n")
-		b.WriteString("5. 🎯 **Interview guide**: see exactly what earns Competent and Exceptional.\n\n")
+	if w.Number > 1 {
+		fmt.Fprintf(&b, "I'll assume you know everything from %s, and build on it.\n\n", earlierWeeks(w.Number))
 	}
-	b.WriteString("Every practice answer gets feedback and an **Interview check**: the rating it would likely get in the interview. ")
-	b.WriteString("Ask for a **hint** when you're stuck, or the **solution** when you want to see one worked through.\n\n")
-	b.WriteString(weekStatusLines(w, wp))
-	fmt.Fprintf(&b, "\n**Next:** %s\n\nYou can also just ask me anything about %s.", nextStep(w, wp), w.Topic)
+	b.WriteString("**Lessons.** Take them in order with **Teach me**, or jump to any one, such as `lesson 3`:\n")
+	for i, l := range w.Lessons {
+		fmt.Fprintf(&b, "%d. %s\n", i+1, l.Title)
+	}
+	b.WriteString("\n**Practice like the interview:** ")
+	var kinds []string
+	for _, k := range w.practiceKinds() {
+		kinds = append(kinds, practiceEmoji(k)+" **"+practiceLabel(w.Number, k)+"**")
+	}
+	b.WriteString(strings.Join(kinds, " · "))
+	b.WriteString(". Every answer gets feedback, an **Interview check** (the rating it would likely get), and advice on how to prepare. Ask for a **hint** or the **solution** any time.\n\n")
+	b.WriteString("🎯 The **Interview guide** shows what this week's interview asks and how it's rated.")
+	if major == "" {
+		b.WriteString("\n\n*Tell me your major (`my major is Biology`) and I'll set examples in your field.*")
+	}
 	return b.String()
+}
+
+func earlierWeeks(week int) string {
+	if week == 2 {
+		return "Week 1"
+	}
+	return fmt.Sprintf("Weeks 1–%d", week-1)
 }
 
 // interviewGuideMessage explains the week's interview from its rubric.
@@ -171,62 +140,12 @@ func interviewGuideMessage(w *weekContent) string {
 	return b.String()
 }
 
-func progressMessage(p studentProfile, current int) string {
-	var b strings.Builder
-	b.WriteString("# Your progress\n\n")
-	fmt.Fprintf(&b, "**Study code:** `%s` · **Major:** %s\n\n", p.StudyCode, p.Major)
-	var weeks []int
-	for n := range p.Weeks {
-		if weekInfo(n) != nil {
-			weeks = append(weeks, n)
-		}
-	}
-	if current > 0 && p.Weeks[current] == nil {
-		weeks = append(weeks, current)
-	}
-	sort.Ints(weeks)
-	if len(weeks) == 0 {
-		b.WriteString("You haven't started a week yet. Pick one to begin.")
-		return b.String()
-	}
-	b.WriteString("| Week | Lessons | Concepts | Code | Bug hunt | Readiness |\n|---|---|---|---|---|---|\n")
-	for _, n := range weeks {
-		w := weekInfo(n)
-		wp := p.Weeks[n]
-		r := weekReadiness(w, wp)
-		cells := map[string]string{kindConcept: "–", kindCode: "–", kindBug: "–"}
-		if n == 1 {
-			cells[kindCode], cells[kindBug] = "n/a", "n/a"
-		}
-		for _, part := range r.Parts {
-			switch {
-			case part.Level != "":
-				cells[part.Kind] = levelLabel(part.Level)
-			case part.Attempts > 0:
-				cells[part.Kind] = "tried"
-			}
-		}
-		name := w.Title
-		if n == current {
-			name = "**" + name + "**"
-		}
-		fmt.Fprintf(&b, "| %s | %d/%d | %s | %s | %s | %s |\n", name, lessonsDone(w, wp), len(w.Lessons), cells[kindConcept], cells[kindCode], cells[kindBug], r.Label)
-	}
-	b.WriteString("\nEach part shows the rating of your latest rated practice. Readiness uses the interview's rule: Not Ready Yet in any part means not ready yet overall.\n")
-	if w := weekInfo(current); w != nil {
-		fmt.Fprintf(&b, "\n**Next for %s:** %s", strings.SplitN(w.Title, " - ", 2)[0], nextStep(w, p.Weeks[current]))
-	}
-	return b.String()
-}
-
-func studyCodeMessage(p studentProfile) string {
-	return fmt.Sprintf("Your study code is **`%s`**. Type it on any device to pick up where you left off.", p.StudyCode)
-}
-
+// helpMessage lists what the student can type. w is nil before a week is chosen.
 func helpMessage(w *weekContent) string {
 	var b strings.Builder
-	b.WriteString("Here's what I can do. Use the buttons below or type these:\n\n")
-	b.WriteString("- **teach me** / **next lesson**: work through this week's lessons\n")
+	b.WriteString("Here's what I can do. Use the buttons, or type these:\n\n")
+	b.WriteString("- **week 5**, **lists**, **week 6 lesson 2**: study any week, topic or lesson, in any order\n")
+	b.WriteString("- **teach me** / **next lesson** / **lesson 3**: lessons in the week you're studying\n")
 	if w != nil && w.Number == 1 {
 		b.WriteString("- **decomposition problem**: practice breaking down a task\n")
 	} else {
@@ -235,10 +154,9 @@ func helpMessage(w *weekContent) string {
 	b.WriteString("- **hint** or **solution**: when you're working on a problem\n")
 	b.WriteString("- **another one**, **a harder one**, **an easier one**: more practice of the same kind\n")
 	b.WriteString("- **interview guide**: what the interview asks and how it's rated\n")
-	b.WriteString("- **progress**: your progress across weeks\n")
-	b.WriteString("- **week 5** (any number): study a different week\n")
-	b.WriteString("- **plan**: this week's study plan\n\n")
-	b.WriteString("Or just ask me anything about Python.")
+	b.WriteString("- **overview**: the week's topics and lessons\n")
+	b.WriteString("- **my major is Biology**: set examples in your field\n\n")
+	b.WriteString("Or just ask me anything about Python, or paste code and I'll explain it.")
 	return b.String()
 }
 
@@ -254,8 +172,8 @@ func noWeek1PracticeMessage(kind string) string {
 	return fmt.Sprintf("Week 1's interview is decomposition only, so there's no %s yet; those start in Week 2. Want a **decomposition problem** instead?", strings.ToLower(practiceLabel(2, kind)))
 }
 
-func allLessonsDoneMessage(w *weekContent, wp *weekProgress) string {
-	return fmt.Sprintf("🎉 You've worked through all %d lessons for %s. Ask me about any of them again, or keep practicing.\n\n**Next:** %s", len(w.Lessons), w.Title, nextStep(w, wp))
+func lastLessonMessage(w *weekContent) string {
+	return fmt.Sprintf("That was the last of the %d lessons for %s. 🎉 Ask for any lesson again by number (`lesson 1` to `lesson %d`), practice for the interview, or move on to another week.", len(w.Lessons), w.Title, len(w.Lessons))
 }
 
 const tutorUnavailableMessage = "Sorry, I couldn't reach the tutor model just now. Please try again in a moment."

@@ -14,9 +14,6 @@ var staticFiles embed.FS
 
 const maxBodySize = 1 << 20 // 1 MiB
 
-// defaultDataDir holds student progress when TUTOR_DATA_DIR is not set.
-const defaultDataDir = "data"
-
 func main() {
 	apiKey := os.Getenv("OPENROUTER_API_KEY")
 	if apiKey == "" {
@@ -36,15 +33,7 @@ func main() {
 		log.Fatalf("auth setup failed: %v", err)
 	}
 
-	dataDir := os.Getenv("TUTOR_DATA_DIR")
-	if dataDir == "" {
-		dataDir = defaultDataDir
-	}
-	store, err := newProgressStore(dataDir)
-	if err != nil {
-		log.Fatal(err)
-	}
-	tutor := newTutor(llm, store)
+	tutor := newTutor(llm)
 	turns := newTurnStore()
 
 	port := os.Getenv("PORT")
@@ -66,7 +55,6 @@ func main() {
 	mux.HandleFunc("GET /api/auth/challenge", auth.handleChallenge)
 	mux.HandleFunc("POST /api/auth/verify", auth.handleVerify)
 	mux.HandleFunc("POST /api/session/bootstrap", auth.requireSession(tutor.handleBootstrap))
-	mux.HandleFunc("POST /api/session/reset", auth.requireSession(tutor.handleReset))
 	mux.HandleFunc("GET /api/session/state", auth.requireSession(tutor.handleState))
 	mux.HandleFunc("POST /api/chat", auth.requireSession(tutor.handleChat(turns)))
 	mux.Handle("GET /{$}", http.FileServer(http.FS(static)))
@@ -84,7 +72,7 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	log.Printf("iPyTutor listening on %s (model %s, progress in %s)", addr, tutorModel(), dataDir)
+	log.Printf("iPyTutor listening on %s (model %s)", addr, tutorModel())
 	if err := server.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}

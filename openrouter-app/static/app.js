@@ -1,5 +1,4 @@
 const STORAGE_KEY = "ipytutor_public_key";
-const STUDY_CODE_KEY = "ipytutor_study_code";
 
 const appEl = document.getElementById("app");
 const messagesEl = document.getElementById("messages");
@@ -16,19 +15,10 @@ const authErrorEl = document.getElementById("auth-error");
 const authSubmitBtn = document.getElementById("auth-submit-btn");
 const sidebarEl = document.getElementById("sidebar");
 const toggleSidebarBtn = document.getElementById("toggle-sidebar");
-const introCardEl = document.getElementById("intro-card");
-const profileCardEl = document.getElementById("profile-card");
-const studyCodeEl = document.getElementById("study-code");
-const copyCodeBtn = document.getElementById("copy-code");
-const majorLineEl = document.getElementById("major-line");
-const switchStudentBtn = document.getElementById("switch-student");
-const weekCardEl = document.getElementById("week-card");
 const weekSelectEl = document.getElementById("week-select");
-const lessonsCountEl = document.getElementById("lessons-count");
-const lessonsBarEl = document.getElementById("lessons-bar");
-const partsEl = document.getElementById("parts");
-const readinessEl = document.getElementById("readiness");
-const nextStepEl = document.getElementById("next-step");
+const lessonsBlockEl = document.getElementById("lessons-block");
+const lessonListEl = document.getElementById("lesson-list");
+const majorLineEl = document.getElementById("major-line");
 
 const MAX_USER_MESSAGE_CHARS = 5000;
 const MAX_CHAT_ATTEMPTS = 6;
@@ -115,7 +105,7 @@ function updateComposerEnabled() {
   promptEl.disabled = !isAuthenticated || busy;
   sendBtn.disabled = !isAuthenticated || busy;
   weekSelectEl.disabled = !isAuthenticated || busy;
-  for (const button of actionsEl.querySelectorAll("button")) {
+  for (const button of document.querySelectorAll("#actions button, #lesson-list button")) {
     button.disabled = !isAuthenticated || busy;
   }
   chatForm.setAttribute("aria-busy", busy ? "true" : "false");
@@ -309,7 +299,7 @@ async function bootstrapSession() {
     method: "POST",
     credentials: "include",
     headers: sessionHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ study_code: storageGet(STUDY_CODE_KEY) || "" }),
+    body: "{}",
   });
   if (response.status === 401) {
     throw new Error("Authentication required.");
@@ -330,76 +320,50 @@ function applyState(state) {
     return;
   }
   tutorState = state;
-  if (state.studyCode) {
-    storageSet(STUDY_CODE_KEY, state.studyCode);
-  }
   renderSidebar();
   renderActions();
 }
 
-const LEVEL_CLASSES = {
-  not_ready: "level-not-ready",
-  competent: "level-competent",
-  exceptional: "level-exceptional",
-};
-
-function readinessClass(label) {
-  if (label.startsWith("Likely Exceptional")) return "level-exceptional";
-  if (label.startsWith("Likely Competent")) return "level-competent";
-  if (label.startsWith("Not Ready")) return "level-not-ready";
-  return "level-none";
-}
-
 function renderSidebar() {
   const state = tutorState || {};
-  const hasStudent = Boolean(state.studyCode);
-  introCardEl.classList.toggle("hidden", hasStudent);
-  profileCardEl.classList.toggle("hidden", !hasStudent);
-  if (hasStudent) {
-    studyCodeEl.textContent = state.studyCode;
-    majorLineEl.textContent = state.major ? `Major: ${state.major}` : "";
-  }
-
   const week = state.week;
-  weekCardEl.classList.toggle("hidden", !week);
-  if (!week) {
-    return;
-  }
 
-  weekSelectEl.innerHTML = "";
-  for (const option of state.weeks || []) {
-    const el = document.createElement("option");
-    el.value = String(option.number);
-    el.textContent = option.readiness ? `${option.title} · ${option.readiness}` : option.title;
-    el.selected = option.number === week.number;
-    weekSelectEl.appendChild(el);
-  }
-
-  lessonsCountEl.textContent = `${week.lessonsDone} of ${week.lessonsTotal}`;
-  const percent = week.lessonsTotal ? Math.round((100 * week.lessonsDone) / week.lessonsTotal) : 0;
-  lessonsBarEl.style.width = `${percent}%`;
-
-  partsEl.innerHTML = "";
-  for (const part of week.readiness?.parts || []) {
-    const item = document.createElement("li");
-    const name = document.createElement("span");
-    name.textContent = part.label;
-    const badge = document.createElement("span");
-    badge.className = `badge ${LEVEL_CLASSES[part.level] || "level-none"}`;
-    if (part.levelLabel) {
-      badge.textContent = part.levelLabel;
-      badge.title = `Latest rated practice, ${part.attempts} rated ${part.attempts === 1 ? "try" : "tries"}`;
-    } else {
-      badge.textContent = "Not tried";
+  // Keep the options; only rebuild them when the week list changes (it doesn't, in practice).
+  if (weekSelectEl.options.length !== (state.weeks || []).length + 1) {
+    weekSelectEl.length = 1;
+    for (const option of state.weeks || []) {
+      const el = document.createElement("option");
+      el.value = String(option.number);
+      el.textContent = option.title;
+      weekSelectEl.appendChild(el);
     }
-    item.append(name, badge);
-    partsEl.appendChild(item);
+  }
+  weekSelectEl.value = week ? String(week.number) : "";
+
+  lessonsBlockEl.classList.toggle("hidden", !week);
+  lessonListEl.innerHTML = "";
+  const current = state.activity?.kind === "lesson" ? state.activity.lesson : 0;
+  for (const [index, title] of (week?.lessons || []).entries()) {
+    const number = index + 1;
+    const item = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = number === current ? "lesson-button current" : "lesson-button";
+    button.textContent = `${number}. ${title}`;
+    if (number === current) {
+      button.setAttribute("aria-current", "true");
+    }
+    button.disabled = !isAuthenticated || chatInFlight;
+    button.addEventListener("click", () => {
+      runUserTurn(`Lesson ${number}: ${title}`, `lesson:${number}`);
+      closeSidebarOnMobile();
+    });
+    item.appendChild(button);
+    lessonListEl.appendChild(item);
   }
 
-  const label = week.readiness?.label || "Not started";
-  readinessEl.textContent = label;
-  readinessEl.className = `badge ${readinessClass(label)}`;
-  nextStepEl.innerHTML = renderInlineMarkdown(week.nextStep || "");
+  majorLineEl.classList.toggle("hidden", !state.major);
+  majorLineEl.textContent = state.major ? `Examples set in: ${state.major}` : "";
 }
 
 // renderActions offers buttons for what the student can do next.
@@ -407,7 +371,7 @@ function renderActions() {
   actionsEl.innerHTML = "";
   const state = tutorState;
   const buttons = [];
-  if (state?.phase === "choose_week") {
+  if (state?.phase === "welcome" || state?.phase === "choose_week") {
     for (const option of state.weeks || []) {
       buttons.push({ label: `Week ${option.number}`, action: `week:${option.number}`, text: `Week ${option.number}` });
     }
@@ -421,17 +385,19 @@ function renderActions() {
       buttons.push({ label: "🔁 Another one", action: "another", primary: true });
       buttons.push({ label: "⬆️ Harder one", action: "another:harder", text: "A harder one" });
     }
+    const lessonCount = state.week.lessons?.length || 0;
     if (activity?.kind === "lesson") {
-      buttons.push({ label: "➡️ Next lesson", action: "next_lesson", primary: true });
-    } else if (state.week.lessonsDone < state.week.lessonsTotal) {
-      buttons.push({ label: state.week.lessonsDone ? "📖 Continue lessons" : "📖 Teach me", action: "lesson", primary: !activity });
+      if (activity.lesson < lessonCount) {
+        buttons.push({ label: "➡️ Next lesson", action: "next_lesson", primary: true });
+      }
+    } else {
+      buttons.push({ label: "📖 Teach me", action: "lesson", primary: !activity });
     }
     for (const kind of state.week.practiceKinds || []) {
       const emoji = { concept: "💬", code: "🧩", bug: "🐞" }[kind.kind] || "📝";
       buttons.push({ label: `${emoji} ${kind.label}`, action: `practice:${kind.kind}` });
     }
     buttons.push({ label: "🎯 Interview guide", action: "guide" });
-    buttons.push({ label: "📊 My progress", action: "progress" });
   }
   for (const spec of buttons) {
     const button = document.createElement("button");
@@ -470,15 +436,6 @@ function renderMarkdown(content) {
     return div.innerHTML;
   }
   return DOMPurify.sanitize(marked.parse(content), { USE_PROFILES: { html: true } });
-}
-
-function renderInlineMarkdown(content) {
-  if (typeof marked === "undefined" || typeof DOMPurify === "undefined") {
-    const div = document.createElement("div");
-    div.textContent = content;
-    return div.innerHTML;
-  }
-  return DOMPurify.sanitize(marked.parseInline(content), { USE_PROFILES: { html: true } });
 }
 
 function addCopyButtons(container) {
@@ -574,7 +531,6 @@ async function postChatTurn(turnId, action) {
       body: JSON.stringify({
         messages: chatPayloadMessages(),
         action: action || "",
-        study_code: storageGet(STUDY_CODE_KEY) || "",
       }),
     });
     if (response.status === 401) {
@@ -686,37 +642,9 @@ promptEl.addEventListener("keydown", (event) => {
 
 weekSelectEl.addEventListener("change", () => {
   const number = Number(weekSelectEl.value);
-  if (tutorState?.week && number !== tutorState.week.number) {
-    runUserTurn(`Switch to Week ${number}`, `week:${number}`);
+  if (number && number !== tutorState?.week?.number) {
+    runUserTurn(`Study Week ${number}`, `week:${number}`);
     closeSidebarOnMobile();
-  }
-});
-
-copyCodeBtn.addEventListener("click", async () => {
-  try {
-    await navigator.clipboard.writeText(studyCodeEl.textContent);
-    copyCodeBtn.textContent = "Copied";
-    setTimeout(() => (copyCodeBtn.textContent = "Copy"), 1500);
-  } catch {
-    copyCodeBtn.textContent = "Copy failed";
-  }
-});
-
-switchStudentBtn.addEventListener("click", async () => {
-  const code = tutorState?.studyCode || "";
-  const ok = window.confirm(
-    `Use a different study code?\n\nThis browser will forget ${code}. If it's yours, write it down first so you can come back to your progress.`
-  );
-  if (!ok || chatInFlight) {
-    return;
-  }
-  try {
-    await fetch("/api/session/reset", { method: "POST", credentials: "include", headers: sessionHeaders() });
-    storageRemove(STUDY_CODE_KEY);
-    await bootstrapSession();
-    closeSidebarOnMobile();
-  } catch (error) {
-    showError(error.message || "Couldn't switch students. Please reload the page.");
   }
 });
 
