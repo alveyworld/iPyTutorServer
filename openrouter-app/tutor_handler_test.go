@@ -200,7 +200,11 @@ func TestStudyAnyWeekAndLesson(t *testing.T) {
 	h := newTutorHarness(t, upstream)
 
 	welcome, state := h.bootstrap()
-	mustContain(t, "welcome", welcome, "Welcome to iPyTutor", "any week", "Week 9 - Lists and Files", "week 6 lesson 2")
+	mustContain(t, "welcome", welcome, "Welcome to iPyTutor", "any week", "Start by telling me your major")
+	// The week buttons and menu offer the weeks, so the welcome doesn't list them.
+	if strings.Contains(welcome, "Week 1 - Problem Decomposition") {
+		t.Fatalf("welcome lists the weeks:\n%s", welcome)
+	}
 	if state.Phase != string(phaseWelcome) || len(state.Weeks) != 9 || state.Week != nil {
 		t.Fatalf("welcome state = %+v", state)
 	}
@@ -272,7 +276,10 @@ func TestMajorIsOptionalAndForgotten(t *testing.T) {
 	h.bootstrap()
 
 	reply, state := h.send("I'm a biology major", "")
-	mustContain(t, "major set", reply, "in **biology**", "Which week")
+	mustContain(t, "major set", reply, "in **biology**", "Which week", "Pick one below")
+	if strings.Contains(reply, "Week 1 - Problem Decomposition") {
+		t.Fatalf("the reply to the major lists the weeks:\n%s", reply)
+	}
 	if state.Major != "biology" || state.Phase != string(phaseChooseWeek) {
 		t.Fatalf("state = %+v", state)
 	}

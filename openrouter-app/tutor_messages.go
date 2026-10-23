@@ -8,13 +8,12 @@ import (
 // Messages that need no model call are written by the server, so they are instant and
 // always match the course content.
 
-// welcomeMessage greets a new visit and lists the weeks.
+// welcomeMessage greets a new visit and asks for the student's major. The weeks are not
+// listed: the week menu and the week buttons below the chat already offer them.
 func welcomeMessage() string {
 	return "# Welcome to iPyTutor 👋\n\n" +
-		"I'm your Python study partner for the **iPyIntervu** interviews. Pick **any week** and I'll teach its lessons, give you practice problems like the interview's, and tell you how each answer would likely be rated and how to prepare.\n\n" +
-		"**Tip:** tell me your major first (for example *Biology* or *Business*) and I'll set examples and problems in your field, like the interview does.\n\n" +
-		"Or jump straight in. Which week would you like to study?\n\n" + weekListMarkdown() +
-		"\n\nType a week number (for example `5`), a topic (`lists`), or a lesson (`week 6 lesson 2`)."
+		"I'm your Python study partner for the **iPyIntervu** interviews. Pick any week and I'll teach its lessons, give you practice problems like the interview's, and tell you how each answer would likely be rated and how to prepare.\n\n" +
+		"**Start by telling me your major** (for example *Biology* or *Business*) and I'll set examples and problems in your field, like the interview does."
 }
 
 const askMajorOrWeekMessage = "Tell me your major in a word or two (for example *Nursing* or *Economics*), or pick a week to study: type its number, such as `5`."
@@ -25,7 +24,8 @@ func majorSetMessage(major string, week int) string {
 	if week > 0 {
 		return fmt.Sprintf("Got it: from now on I'll set examples and practice problems in **%s**.", major)
 	}
-	return fmt.Sprintf("Great, I'll set examples and practice problems in **%s**.\n\nWhich week would you like to study?\n\n%s\n\nType a week number (for example `5`), a topic (`lists`), or a lesson (`week 6 lesson 2`).", major, weekListMarkdown())
+	// The week buttons and menu list the weeks, so this reply doesn't.
+	return fmt.Sprintf("Great, I'll set examples and practice problems in **%s**.\n\nWhich week would you like to study? Pick one below, or type its number (for example `5`).", major)
 }
 
 // weekListMarkdown lists the syllabus weeks.
