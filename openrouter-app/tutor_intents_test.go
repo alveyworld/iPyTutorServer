@@ -69,6 +69,53 @@ func TestDetectIntent(t *testing.T) {
 	}
 }
 
+func TestDetectWeekAndMajor(t *testing.T) {
+	cases := []struct {
+		msg  string
+		bare bool
+		want intent
+	}{
+		{"week 3, my major is Biology", false, intent{Kind: intentWeek, Week: 3, Major: "Biology"}},
+		{"My major is Biology, week 3", false, intent{Kind: intentWeek, Week: 3, Major: "Biology"}},
+		{"week 3 my major is biology", false, intent{Kind: intentWeek, Week: 3, Major: "biology"}},
+		{"Hi! I'm a business major. Can we do week 4 lesson 2?", false, intent{Kind: intentWeek, Week: 4, Lesson: 2, Major: "business"}},
+		{"I'm a nursing major and I want week 5", false, intent{Kind: intentWeek, Week: 5, Major: "nursing"}},
+		{"I’m a Math and Physics major, week 6", false, intent{Kind: intentWeek, Week: 6, Major: "Math and Physics"}},
+		{"week 6, lesson 2, my major is Economics", false, intent{Kind: intentWeek, Week: 6, Lesson: 2, Major: "Economics"}},
+		{"lesson 4 of week 8 - I study Chemistry", true, intent{Kind: intentWeek, Week: 8, Lesson: 4, Major: "Chemistry"}},
+		{"I'm majoring in music; week 2 please", false, intent{Kind: intentWeek, Week: 2, Major: "music"}},
+		{"Biology, week 3", true, intent{Kind: intentWeek, Week: 3, Major: "Biology"}},
+		{"week 7. Computer Science", true, intent{Kind: intentWeek, Week: 7, Major: "Computer Science"}},
+		{"Biology for week 3", true, intent{Kind: intentWeek, Week: 3, Major: "Biology"}},
+		{"I'm a biology major starting week 3", false, intent{Kind: intentWeek, Week: 3, Major: "biology"}},
+	}
+	for _, c := range cases {
+		if got, ok := detectWeekAndMajor(c.msg, c.bare); !ok || got != c.want {
+			t.Errorf("detectWeekAndMajor(%q, %v) = %+v, %v; want %+v", c.msg, c.bare, got, ok, c.want)
+		}
+	}
+
+	rejected := []struct {
+		msg  string
+		bare bool
+	}{
+		{"week 3", true},
+		{"my major is Biology", true},
+		{"Biology, week 3", false}, // a bare word mid-study is more likely an answer
+		{"lists, week 3", true},    // a week's topic, not a major
+		{"week 3, week 5, my major is Biology", true},
+		{"week 3, my major is Biology, I like loops", true},
+		{"In week 3 I learned that input() returns a string, so my major is irrelevant", true},
+		{"week 3, my major is Biology\nweek 4", true},
+		{"week 12, my major is Biology", true},
+	}
+	for _, c := range rejected {
+		if got, ok := detectWeekAndMajor(c.msg, c.bare); ok {
+			t.Errorf("detectWeekAndMajor(%q, %v) = %+v, want not ok", c.msg, c.bare, got)
+		}
+	}
+}
+
 func TestParseAction(t *testing.T) {
 	cases := map[string]intent{
 		"lesson":         {Kind: intentLesson},
@@ -109,7 +156,7 @@ func TestCleanMajor(t *testing.T) {
 			t.Errorf("cleanMajor(%q) = %q, %v; want %q", in, got, ok, want)
 		}
 	}
-	for _, in := range []string{"", "hi", "hello!", "I want to learn how loops work in Python today please", "```code```"} {
+	for _, in := range []string{"", "hi", "hello!", "I want to learn how loops work in Python today please", "```code```", "week 3, my major is Biology", "Biology lesson 2"} {
 		if got, ok := cleanMajor(in); ok {
 			t.Errorf("cleanMajor(%q) = %q, want rejected", in, got)
 		}

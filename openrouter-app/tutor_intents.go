@@ -47,6 +47,9 @@ type intent struct {
 	Topic bool
 	// MoveOn marks a bare "next" or "continue", whose meaning depends on the activity.
 	MoveOn bool
+	// Major is a major given in the same message as a week, for intentWeek
+	// ("week 3, my major is Biology").
+	Major string
 }
 
 // parseAction reads the action a UI button sends ("practice:code", "week:5", "lesson:3").
@@ -188,6 +191,99 @@ func detectIntent(msg string, practicing bool) intent {
 		}
 	}
 	return intent{}
+}
+
+// A message that gives a week and a major together, such as "week 3, my major is
+// Biology" or "I'm a nursing major and I want week 5", is read clause by clause.
+const maxWeekAndMajorWords = 20
+
+var (
+	clauseBreak       = regexp.MustCompile(`\s*(?:[,;!?]+|\.+(?:\s+|$)|\s+-+\s+)\s*`)
+	clauseConjunction = regexp.MustCompile(`(?i)\s+(?:and|but|so|also|then)\s+`)
+	majorClauseStart  = regexp.MustCompile(`(?i)\s+(my major is|i'?m majoring in|i am majoring in|i major in|i'?m an? |i am an? )`)
+	weekClauseStart   = regexp.MustCompile(`(?i)\s+(week \d)`)
+	// bareMajorText is a major given without "my major is", such as "Biology, week 3".
+	bareMajorText = regexp.MustCompile(`(?i)^[a-z][a-z&/ -]*$`)
+	fillerClause  = regexp.MustCompile(`(?i)^(?:please|pls|thx)$`)
+	// clauseEdge is a joining word left at the edge of a clause by a split, such as the
+	// "for" in "Biology for week 3".
+	clauseEdge = regexp.MustCompile(`(?i)^(?:and|so|but|also|then|for|in|on|with|to|of|from)\s+|\s+(?:and|for|in|on|with|to|of|from|doing|studying|starting|taking)$`)
+)
+
+// detectWeekAndMajor reads a message that chooses a week (optionally a lesson) and gives
+// a major. bareMajor accepts a major on its own ("Biology, week 3"), which is only safe
+// before the student has started studying. Each pass splits the message more finely
+// than the one before, so "Math and Physics major, week 3" keeps its "and".
+func detectWeekAndMajor(msg string, bareMajor bool) (intent, bool) {
+	if strings.Contains(msg, "```") || strings.Contains(msg, "\n") || len(strings.Fields(msg)) > maxWeekAndMajorWords {
+		return intent{}, false
+	}
+	s := strings.NewReplacer("’", "'", "‘", "'").Replace(strings.TrimSpace(msg))
+	s = majorClauseStart.ReplaceAllString(s, ", $1")
+	for pass := 0; pass < 3; pass++ {
+		switch pass {
+		case 1:
+			s = clauseConjunction.ReplaceAllString(s, ", ")
+		case 2:
+			s = weekClauseStart.ReplaceAllString(s, ", $1")
+		}
+		if in, ok := readWeekAndMajor(clauseBreak.Split(s, -1), bareMajor); ok {
+			return in, true
+		}
+	}
+	return intent{}, false
+}
+
+// readWeekAndMajor accepts clauses that hold exactly one week and one major, plus an
+// optional separate lesson ("week 6, lesson 2"), greetings and "please".
+func readWeekAndMajor(clauses []string, bareMajor bool) (intent, bool) {
+	var week intent
+	lesson := 0
+	major := ""
+	for _, c := range clauses {
+		c = clauseEdge.ReplaceAllString(strings.Trim(c, " \"'*_"), "")
+		if c == "" || isGreetingMessage(c) || fillerClause.MatchString(c) {
+			continue
+		}
+		in := detectIntent(c, false)
+		switch {
+		case in.Kind == intentWeek && !in.Topic && week.Kind == intentNone:
+			week = in
+		case in.Kind == intentLesson && in.Lesson > 0 && lesson == 0:
+			lesson = in.Lesson
+		default:
+			m, ok := majorFromClause(c, in, bareMajor)
+			if !ok || major != "" {
+				return intent{}, false
+			}
+			major = m
+		}
+	}
+	if week.Kind == intentNone || major == "" {
+		return intent{}, false
+	}
+	if lesson > 0 {
+		if week.Lesson > 0 {
+			return intent{}, false
+		}
+		week.Lesson = lesson
+	}
+	week.Major = major
+	return week, true
+}
+
+// majorFromClause reads one clause as a major: "my major is Biology", "I'm a nursing
+// major", or, with bare, just "Biology".
+func majorFromClause(c string, in intent, bare bool) (string, bool) {
+	if in.Kind == intentSetMajor {
+		return cleanMajor(c)
+	}
+	if bare && in.Kind == intentNone && bareMajorText.MatchString(c) && len(strings.Fields(c)) <= 4 {
+		if _, isWeek := weekFromMessage(c); !isWeek {
+			return cleanMajor(c)
+		}
+	}
+	return "", false
 }
 
 func difficultyWord(word string) string {

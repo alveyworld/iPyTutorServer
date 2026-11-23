@@ -28,6 +28,11 @@ func majorSetMessage(major string, week int) string {
 	return fmt.Sprintf("Great, I'll set examples and practice problems in **%s**.\n\nWhich week would you like to study? Pick one below, or type its number (for example `5`).", major)
 }
 
+// majorWithWeekMessage starts the reply to a message that gave a major and a week together.
+func majorWithWeekMessage(major string) string {
+	return fmt.Sprintf("Great, I'll set examples and practice problems in **%s**.", major)
+}
+
 // weekListMarkdown lists the syllabus weeks.
 func weekListMarkdown() string {
 	lines := make([]string, 0, len(weeklyKeyConceptSelections))

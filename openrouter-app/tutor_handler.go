@@ -200,6 +200,10 @@ func (t *tutor) turn(sessionID string, sess *tutorSession, req chatRequest) stri
 	tc := &turnContext{sessionID: sessionID, sess: sess, msg: msg}
 	in, ok := parseAction(req.Action)
 	if !ok {
+		// Checked first, because "my major is Biology, week 3" also starts like a major.
+		in, ok = detectWeekAndMajor(msg, sess.Phase != phaseStudying)
+	}
+	if !ok {
 		in = detectIntent(msg, sess.Activity.open())
 	}
 	tc.in = in
@@ -231,12 +235,19 @@ func (t *tutor) navigate(tc *turnContext) (string, bool) {
 		if in.Topic && in.Week == sess.Week && sess.Phase == phaseStudying {
 			return "", false
 		}
+		// A major given with the week is set first, so the week's problems are drafted in it.
+		note := ""
+		if in.Major != "" {
+			t.applyMajor(tc, in.Major)
+			note = majorWithWeekMessage(in.Major) + "\n\n"
+		}
 		lesson := in.Lesson - 1
 		if in.Teach {
 			lesson = 0
 		}
 		if lesson < 0 {
-			return t.startWeek(tc, in.Week), true
+			t.switchWeek(tc, in.Week)
+			return t.say(sess, tc.msg, note+weekOverviewMessage(weekInfo(in.Week), sess.Major)), true
 		}
 		changed := sess.Week != in.Week
 		t.switchWeek(tc, in.Week)
@@ -244,7 +255,7 @@ func (t *tutor) navigate(tc *turnContext) (string, bool) {
 		if changed {
 			reply = "*📚 Now studying **" + weekInfo(in.Week).Title + "**.*\n\n" + reply
 		}
-		return reply, true
+		return note + reply, true
 	case intentLesson:
 		if sess.Week == 0 && in.Lesson > 0 {
 			return t.say(sess, tc.msg, pickWeekFirstMessage("Lessons belong to a week, so pick the week first. For example, type `week 5 lesson 2`.")), true
@@ -265,29 +276,36 @@ func (t *tutor) navigate(tc *turnContext) (string, bool) {
 var majorPrefix = regexp.MustCompile(`(?i)^(?:(?:hi|hello|hey)[,!. ]+)?(?:my major is|i'?m majoring in|i am majoring in|i major in|i'?m an?|i am an?|i study|i'?m studying|major\s*:?|set my major to|change my major to|it'?s)\s+`)
 var majorSuffix = regexp.MustCompile(`(?i)\s+(?:major|student)$`)
 
+// weekOrLessonMention spots a week or lesson number, which is never part of a major.
+var weekOrLessonMention = regexp.MustCompile(`(?i)\b(?:week|lesson)\s*\d`)
+
 // cleanMajor extracts the major from a reply such as "I'm a biology major".
 func cleanMajor(msg string) (string, bool) {
 	s := strings.Trim(strings.TrimSpace(msg), ".!?\"'")
 	s = majorPrefix.ReplaceAllString(s, "")
 	s = majorSuffix.ReplaceAllString(s, "")
 	s = strings.TrimSpace(s)
-	if s == "" || len(s) > 60 || len(strings.Fields(s)) > 6 || strings.ContainsAny(s, "`{}[]<>") || isGreetingMessage(strings.Trim(s, "!.,")) {
+	if s == "" || len(s) > 60 || len(strings.Fields(s)) > 6 || strings.ContainsAny(s, "`{}[]<>") || isGreetingMessage(strings.Trim(s, "!.,")) || weekOrLessonMention.MatchString(s) {
 		return "", false
 	}
 	return s, true
 }
 
-// setMajor changes the field examples and problems are set in. Problems drafted for the
-// old field are dropped.
+// setMajor changes the field examples and problems are set in.
 func (t *tutor) setMajor(tc *turnContext, major string) string {
 	sess := tc.sess
-	sess.Major = major
-	sess.clearPrepared()
+	t.applyMajor(tc, major)
 	if sess.Week == 0 {
 		sess.Phase = phaseChooseWeek
 	}
-	log.Printf("[tutor] major_set session=%s", shortID(tc.sessionID))
 	return t.say(sess, tc.msg, majorSetMessage(major, sess.Week))
+}
+
+// applyMajor records the major. Problems drafted for the old field are dropped.
+func (t *tutor) applyMajor(tc *turnContext, major string) {
+	tc.sess.Major = major
+	tc.sess.clearPrepared()
+	log.Printf("[tutor] major_set session=%s", shortID(tc.sessionID))
 }
 
 // weekFromMessage reads a bare week choice such as "5", "week 5" or "lists".

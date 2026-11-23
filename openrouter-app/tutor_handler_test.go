@@ -305,6 +305,44 @@ func TestMajorIsOptionalAndForgotten(t *testing.T) {
 	}
 }
 
+func TestWeekAndMajorInOneMessage(t *testing.T) {
+	_, upstream := withFakeOpenRouter(t)
+	h := newTutorHarness(t, upstream)
+	h.bootstrap()
+
+	reply, state := h.send("week 3, my major is Biology", "")
+	mustContain(t, "week and major", reply, "in **Biology**", "# Week 3")
+	if strings.Contains(reply, "Tell me your major") {
+		t.Fatalf("overview asks for the major the student just gave:\n%s", reply)
+	}
+	if state.Major != "Biology" || state.Week == nil || state.Week.Number != 3 || state.Phase != string(phaseStudying) {
+		t.Fatalf("state = %+v", state)
+	}
+
+	// Mid-study, an explicit major with a week and lesson switches both.
+	reply, state = h.send("I'm a nursing major, week 6 lesson 2", "")
+	mustContain(t, "week, lesson and major", reply, "in **nursing**", "Now studying")
+	if state.Major != "nursing" || state.Week.Number != 6 {
+		t.Fatalf("state = %+v", state)
+	}
+
+	// A bare major with a week works on a fresh page too.
+	h.bootstrap()
+	reply, state = h.send("Business, week 4", "")
+	mustContain(t, "bare major", reply, "in **Business**", "# Week 4")
+	if state.Major != "Business" || state.Week.Number != 4 {
+		t.Fatalf("state = %+v", state)
+	}
+
+	// A message that mentions a week it can't read is not taken as the major.
+	h.bootstrap()
+	reply, state = h.send("Biology for week 12", "")
+	mustContain(t, "unknown week", reply, "Tell me your major")
+	if state.Major != "" {
+		t.Fatalf("major = %q, reply:\n%s", state.Major, reply)
+	}
+}
+
 func TestCommandsBeforeChoosingAWeek(t *testing.T) {
 	_, upstream := withFakeOpenRouter(t)
 	h := newTutorHarness(t, upstream)
